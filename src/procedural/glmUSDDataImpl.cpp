@@ -155,6 +155,7 @@ namespace glm
 
             // Define the default value types for our animated properties.
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpTranslate].defaultValue = VtValue(GfVec3f(0));
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpTranslate].isAnimated = true;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpOrder].defaultValue = VtValue(VtTokenArray({_skinMeshEntityPropertyTokens->xformOpTranslate}));
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpOrder].isAnimated = false;
@@ -166,6 +167,7 @@ namespace glm
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->extentsHint].isAnimated = false;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->visibility].defaultValue = VtValue(UsdGeomTokens->inherited);
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->visibility].isAnimated = true;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->entityId].defaultValue = VtValue(int64_t(-1));
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->entityId].isAnimated = false;
@@ -174,8 +176,10 @@ namespace glm
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->geometryTagId].isAnimated = false;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->geometryFileId].defaultValue = VtValue(int32_t(0));
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->geometryFileId].isAnimated = true;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->lodName].defaultValue = VtValue(TfToken(""));
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->lodName].isAnimated = true;
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -193,18 +197,22 @@ namespace glm
             // Define the default value types for our animated properties.
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->visibility].defaultValue = VtValue(UsdGeomTokens->inherited);
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->visibility].isAnimated = true;
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->entityId].defaultValue = VtValue(int64_t(-1));
             (*_skelEntityProperties)[_skelEntityPropertyTokens->entityId].isAnimated = false;
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->extent].defaultValue = VtValue(VtVec3fArray({GfVec3f(-0.5, -0.5, -0.5), GfVec3f(0.5, 0.5, 0.5)}));
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->extent].isAnimated = true;
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryTagId].defaultValue = VtValue(int32_t(0));
             (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryTagId].isAnimated = false;
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryFileId].defaultValue = VtValue(int32_t(-1));
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryFileId].isAnimated = true;
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->lodName].defaultValue = VtValue(TfToken(""));
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->lodName].isAnimated = true;
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -220,8 +228,10 @@ namespace glm
         {
             // Define the default value types for our animated properties.
             (*_skinMeshProperties)[_skinMeshPropertyTokens->points].defaultValue = VtValue(VtVec3fArray());
+            (*_skinMeshProperties)[_skinMeshPropertyTokens->points].isAnimated = true;
 
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].defaultValue = VtValue(VtVec3fArray());
+            (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].isAnimated = true;
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].hasInterpolation = true;
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].interpolation = UsdGeomTokens->faceVarying;
 
@@ -231,6 +241,7 @@ namespace glm
 
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexCounts].defaultValue = VtValue(VtIntArray());
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexCounts].isAnimated = false;
+
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexIndices].defaultValue = VtValue(VtIntArray());
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexIndices].isAnimated = false;
 
@@ -289,10 +300,13 @@ namespace glm
             (*_skelAnimProperties)[_skelAnimPropertyTokens->joints].isAnimated = false;
 
             (*_skelAnimProperties)[_skelAnimPropertyTokens->rotations].defaultValue = VtValue(VtQuatfArray());
+            (*_skelAnimProperties)[_skelAnimPropertyTokens->rotations].isAnimated = true;
 
             (*_skelAnimProperties)[_skelAnimPropertyTokens->scales].defaultValue = VtValue(VtVec3hArray());
+            (*_skelAnimProperties)[_skelAnimPropertyTokens->scales].isAnimated = true;
 
             (*_skelAnimProperties)[_skelAnimPropertyTokens->translations].defaultValue = VtValue(VtVec3fArray());
+            (*_skelAnimProperties)[_skelAnimPropertyTokens->translations].isAnimated = true;
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
