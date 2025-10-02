@@ -61,13 +61,19 @@ namespace glm
             ((visibility, "visibility"))
             ((entityId, "entityId"))
             ((extentsHint, "extentsHint"))
+            ((geometryTagId, "geometryTagId"))
+            ((geometryFileId, "geometryFileId"))
+            ((lodName, "lodName"))
         );
 
         TF_DEFINE_PRIVATE_TOKENS(
             _skelEntityPropertyTokens,
             ((visibility, "visibility"))
             ((entityId, "entityId"))
-            ((extentsHint, "extentsHint"))
+            ((extent, "extent"))
+            ((geometryTagId, "geometryTagId"))
+            ((geometryFileId, "geometryFileId"))
+            ((lodName, "lodName"))
         );
 
         TF_DEFINE_PRIVATE_TOKENS(
@@ -149,6 +155,7 @@ namespace glm
 
             // Define the default value types for our animated properties.
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpTranslate].defaultValue = VtValue(GfVec3f(0));
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpTranslate].isAnimated = true;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpOrder].defaultValue = VtValue(VtTokenArray({_skinMeshEntityPropertyTokens->xformOpTranslate}));
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->xformOpOrder].isAnimated = false;
@@ -160,9 +167,19 @@ namespace glm
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->extentsHint].isAnimated = false;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->visibility].defaultValue = VtValue(UsdGeomTokens->inherited);
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->visibility].isAnimated = true;
 
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->entityId].defaultValue = VtValue(int64_t(-1));
             (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->entityId].isAnimated = false;
+
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->geometryTagId].defaultValue = VtValue(int32_t(0));
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->geometryTagId].isAnimated = false;
+
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->geometryFileId].defaultValue = VtValue(int32_t(0));
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->geometryFileId].isAnimated = true;
+
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->lodName].defaultValue = VtValue(TfToken(""));
+            (*_skinMeshEntityProperties)[_skinMeshEntityPropertyTokens->lodName].isAnimated = true;
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -180,12 +197,22 @@ namespace glm
             // Define the default value types for our animated properties.
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->visibility].defaultValue = VtValue(UsdGeomTokens->inherited);
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->visibility].isAnimated = true;
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->entityId].defaultValue = VtValue(int64_t(-1));
             (*_skelEntityProperties)[_skelEntityPropertyTokens->entityId].isAnimated = false;
 
-            (*_skelEntityProperties)[_skelEntityPropertyTokens->extentsHint].defaultValue = VtValue(VtVec3fArray({GfVec3f(-0.5, -0.5, -0.5), GfVec3f(0.5, 0.5, 0.5)}));
-            (*_skelEntityProperties)[_skelEntityPropertyTokens->extentsHint].isAnimated = false;
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->extent].defaultValue = VtValue(VtVec3fArray({GfVec3f(-0.5, -0.5, -0.5), GfVec3f(0.5, 0.5, 0.5)}));
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->extent].isAnimated = true;
+
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryTagId].defaultValue = VtValue(int32_t(0));
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryTagId].isAnimated = false;
+
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryFileId].defaultValue = VtValue(int32_t(-1));
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryFileId].isAnimated = true;
+
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->lodName].defaultValue = VtValue(TfToken(""));
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->lodName].isAnimated = true;
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -201,8 +228,10 @@ namespace glm
         {
             // Define the default value types for our animated properties.
             (*_skinMeshProperties)[_skinMeshPropertyTokens->points].defaultValue = VtValue(VtVec3fArray());
+            (*_skinMeshProperties)[_skinMeshPropertyTokens->points].isAnimated = true;
 
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].defaultValue = VtValue(VtVec3fArray());
+            (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].isAnimated = true;
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].hasInterpolation = true;
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].interpolation = UsdGeomTokens->faceVarying;
 
@@ -212,6 +241,7 @@ namespace glm
 
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexCounts].defaultValue = VtValue(VtIntArray());
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexCounts].isAnimated = false;
+
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexIndices].defaultValue = VtValue(VtIntArray());
             (*_skinMeshProperties)[_skinMeshPropertyTokens->faceVertexIndices].isAnimated = false;
 
@@ -270,10 +300,13 @@ namespace glm
             (*_skelAnimProperties)[_skelAnimPropertyTokens->joints].isAnimated = false;
 
             (*_skelAnimProperties)[_skelAnimPropertyTokens->rotations].defaultValue = VtValue(VtQuatfArray());
+            (*_skelAnimProperties)[_skelAnimPropertyTokens->rotations].isAnimated = true;
 
             (*_skelAnimProperties)[_skelAnimPropertyTokens->scales].defaultValue = VtValue(VtVec3hArray());
+            (*_skelAnimProperties)[_skelAnimPropertyTokens->scales].isAnimated = true;
 
             (*_skelAnimProperties)[_skelAnimPropertyTokens->translations].defaultValue = VtValue(VtVec3fArray());
+            (*_skelAnimProperties)[_skelAnimPropertyTokens->translations].isAnimated = true;
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -1398,6 +1431,19 @@ namespace glm
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
                     }
+                    if (nameToken == _skelEntityPropertyTokens->extent)
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(VtVec3fArray({entityData->pos - entityData->extent, entityData->pos + entityData->extent}));
+                    }
+                    if (nameToken == _skelEntityPropertyTokens->geometryFileId)
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->geometryFileIdx);
+                    }
+                    if (nameToken == _skelEntityPropertyTokens->lodName)
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->lodName);
+                    }
+
                     return _QueryEntityAttributes(genericEntityData, nameToken, frame, value);
                 }
                 else
@@ -1481,6 +1527,14 @@ namespace glm
                     if (nameToken == _skinMeshEntityPropertyTokens->visibility)
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
+                    }
+                    if (nameToken == _skinMeshEntityPropertyTokens->geometryFileId)
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->geometryFileIdx);
+                    }
+                    if (nameToken == _skinMeshEntityPropertyTokens->lodName)
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->lodName);
                     }
                     return _QueryEntityAttributes(genericEntityData, nameToken, frame, value);
                 }
@@ -1857,7 +1911,7 @@ namespace glm
             GlmString meshVariantEnable("Enable");
             GlmString meshVariantDisable("Disable");
             GlmString lodVariantSetName = "LevelOfDetail";
-            GlmString lodName;
+            GlmString lodVariantName;
             glm::Array<glm::GlmString> entityMeshNames;
             SdfPath animationsGroupPath;
             std::vector<TfToken>* animationsChildNames = NULL;
@@ -1979,12 +2033,12 @@ namespace glm
 
                         entityData->inputGeoData._fbxStorage = &getFbxStorage();
                         entityData->inputGeoData._fbxBaker = &getFbxBaker();
-                        entityData->inputGeoData._geometryTag = _params.glmGeometryTag;
                         entityData->inputGeoData._enableLOD = _params.glmLodMode != 0 ? 1 : 0;
                     }
                     entityData->initEntityLock();
                     entityData->inputGeoData._dirMapRules = dirmapRules;
                     entityData->inputGeoData._entityId = entityId;
+                    entityData->inputGeoData._geometryTag = _params.glmGeometryTag;
                     entityData->inputGeoData._entityIndex = iEntity;
                     entityData->inputGeoData._simuData = simuData;
                     entityData->inputGeoData._entityToBakeIndex = entityToBakeIndex;
@@ -2148,56 +2202,68 @@ namespace glm
                             skelEntityData->geoVariants[meshName] = meshVariantEnable.c_str();
                         }
 
-                        size_t geometryFileIdx = 0;
-                        if (_params.glmLodMode > 0)
-                        {
-                            float* rootPos = entityData->inputGeoData._frameDatas[0]->_bonePositions[entityData->bonePositionOffset];
-                            Vector3 entityPos(rootPos);
-                            Vector3 cameraPos;
+                        entityData->geometryFileIdx = 0;
 
-                            // update LOD data
-                            if (_params.glmLodMode == 1)
+                        PODArray<float> overrideMinLodDistances;
+                        PODArray<float> overrideMaxLodDistances;
+                        float distanceToCamera = -1.f;
+
+                        uint32_t geoDataIndex = entityData->inputGeoData._simuData->_iGeoBehaviorOffsetPerEntityType[entityType] + entityData->inputGeoData._simuData->_indexInEntityType[entityData->inputGeoData._entityIndex];
+                        bool geoFileIdxSet = false;
+                        if (entityData->inputGeoData._frameDatas[0] != NULL)
+                        {
+                            uint16_t cacheGeoIdx = entityData->inputGeoData._frameDatas[0]->_geoBehaviorGeometryIds[geoDataIndex];
+                            if (cacheGeoIdx != UINT16_MAX)
                             {
-                                // in static lod mode get the camera pos directly from the params
-                                cameraPos.setValues(_params.glmCameraPos.data());
+                                entityData->geometryFileIdx = cacheGeoIdx;
+                                geoFileIdxSet = true;
                             }
-                            else if (_params.glmLodMode == 2)
+                        }
+                        if (!geoFileIdxSet)
+                        {
+                            if (_params.glmLodMode > 0)
                             {
-                                // in dynamic lod mode get the camera pos from the node attributes (it may be connected to another attribute - usdWrapper will do the update)
-                                const VtValue* cameraPosValue = TfMapLookupPtr(_usdParams, _golaemTokens->glmCameraPos);
-                                if (cameraPosValue != NULL)
+                                float* rootPos = entityData->inputGeoData._frameDatas[0]->_bonePositions[entityData->bonePositionOffset];
+                                Vector3 entityPos(rootPos);
+                                Vector3 cameraPos;
+
+                                // update LOD data
+                                if (_params.glmLodMode == 1)
                                 {
-                                    if (cameraPosValue->IsHolding<GfVec3f>())
+                                    // in static lod mode get the camera pos directly from the params
+                                    cameraPos.setValues(_params.glmCameraPos.data());
+                                }
+                                else if (_params.glmLodMode == 2)
+                                {
+                                    // in dynamic lod mode get the camera pos from the node attributes (it may be connected to another attribute - usdWrapper will do the update)
+                                    const VtValue* cameraPosValue = TfMapLookupPtr(_usdParams, _golaemTokens->glmCameraPos);
+                                    if (cameraPosValue != NULL)
                                     {
-                                        const GfVec3f& usdValue = cameraPosValue->UncheckedGet<GfVec3f>();
-                                        cameraPos.setValues(usdValue.data());
+                                        if (cameraPosValue->IsHolding<GfVec3f>())
+                                        {
+                                            const GfVec3f& usdValue = cameraPosValue->UncheckedGet<GfVec3f>();
+                                            cameraPos.setValues(usdValue.data());
+                                        }
                                     }
                                 }
-                            }
 
-                            float distanceToCamera = glm::distance(entityPos, cameraPos);
-                            PODArray<float> overrideMinLodDistances;
-                            PODArray<float> overrideMaxLodDistances;
-                            crowdio::getLodOverridesFromCache(overrideMinLodDistances, overrideMaxLodDistances, &entityData->inputGeoData);
-                            character->getGeometryAsset(_params.glmGeometryTag, geometryFileIdx, distanceToCamera, &overrideMinLodDistances, &overrideMaxLodDistances);
-                        }
-                        else
-                        {
-                            // get the lod variant from the cache
-                            int geoDataIndex = entityData->inputGeoData._simuData->_iGeoBehaviorOffsetPerEntityType[entityType] + entityData->inputGeoData._simuData->_indexInEntityType[entityData->inputGeoData._entityIndex];
-                            if (entityData->inputGeoData._frameDatas[0] != NULL)
-                            {
-                                uint16_t cacheGeoIdx = entityData->inputGeoData._frameDatas[0]->_geoBehaviorGeometryIds[geoDataIndex];
-                                if (cacheGeoIdx != UINT16_MAX)
-                                {
-                                    geometryFileIdx = cacheGeoIdx;
-                                }
+                                distanceToCamera = crowdio::computeDistanceToCamera(cameraPos, entityPos, *character, entityScale, entityData->inputGeoData._geometryTag);
+                                crowdio::getLodOverridesFromCache(overrideMinLodDistances, overrideMaxLodDistances, &entityData->inputGeoData);
                             }
                         }
+
+                        const GeometryAsset* geometryAsset = character->getGeometryAsset(entityData->inputGeoData._geometryTag, entityData->geometryFileIdx, distanceToCamera, &overrideMinLodDistances, &overrideMaxLodDistances);
+                        if (geometryAsset)
+                        {
+                            GlmString lodLevelString;
+                            getStringFromLODLevel(static_cast<LODLevelFlags::Value>(geometryAsset->_lodLevel), lodLevelString);
+                            entityData->lodName = TfToken(lodLevelString.c_str());
+                        }
+
                         // set the lod variant
-                        lodName = "lod";
-                        lodName += glm::toString(geometryFileIdx);
-                        skelEntityData->geoVariants[lodVariantSetName.c_str()] = lodName.c_str();
+                        lodVariantName = "lod";
+                        lodVariantName += glm::toString(entityData->geometryFileIdx);
+                        skelEntityData->geoVariants[lodVariantSetName.c_str()] = lodVariantName.c_str();
                     }
                     else if (displayMode == GolaemDisplayMode::BOUNDING_BOX)
                     {
@@ -2249,9 +2315,9 @@ namespace glm
                         {
                             for (size_t iLod = 0, lodCount = characterTemplateData.size(); iLod < lodCount; ++iLod)
                             {
-                                lodName = "lod";
-                                lodName += glm::toString(iLod);
-                                TfToken lodToken(lodName.c_str());
+                                lodVariantName = "lod";
+                                lodVariantName += glm::toString(iLod);
+                                TfToken lodToken(lodVariantName.c_str());
                                 SdfPath lodPath = entityData->entityPath.AppendChild(lodToken);
                                 _primSpecPaths.insert(lodPath);
                                 _primChildNames[entityData->entityPath].push_back(lodToken);
@@ -2455,6 +2521,14 @@ namespace glm
                             {
                                 *value = VtValue(entityData->inputGeoData._entityId);
                             }
+                            else if (nameToken == _skelEntityPropertyTokens->extent)
+                            {
+                                *value = VtValue(VtVec3fArray({entityData->pos - entityData->extent, entityData->pos + entityData->extent}));
+                            }
+                            else if (nameToken == _skelEntityPropertyTokens->geometryTagId)
+                            {
+                                *value = VtValue(int32_t(entityData->inputGeoData._geometryTag));
+                            }
                             else
                             {
                                 *value = propInfo->defaultValue;
@@ -2546,6 +2620,10 @@ namespace glm
                             else if (nameToken == _skinMeshEntityPropertyTokens->entityId)
                             {
                                 *value = VtValue(entityData->inputGeoData._entityId);
+                            }
+                            else if (nameToken == _skinMeshEntityPropertyTokens->geometryTagId)
+                            {
+                                *value = VtValue(int32_t(entityData->inputGeoData._geometryTag));
                             }
                             else if (nameToken == _skinMeshEntityPropertyTokens->extentsHint)
                             {
@@ -2980,7 +3058,7 @@ namespace glm
 
                         GfVec3h& scaleValue = animData->scales[specificBoneIndex];
 
-                        float(&snsCacheValues)[4] = frameData->_snsValues[animData->boneSnsOffset + iSnS];
+                        float (&snsCacheValues)[4] = frameData->_snsValues[animData->boneSnsOffset + iSnS];
 
                         scaleValue[0] = snsCacheValues[0];
                         scaleValue[1] = snsCacheValues[1];
@@ -3018,7 +3096,7 @@ namespace glm
                     // get translation/rotation values as 3 float
 
                     Vector3 currentPosValues(frameData->_bonePositions[entityData->bonePositionOffset + boneIndexInCache]); // default
-                    float(&quatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + boneIndexInCache];
+                    float (&quatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + boneIndexInCache];
 
                     Quaternion boneWOri(quatValue);
                     Quaternion fatherBoneWOri(0, 0, 0, 1);
@@ -3028,7 +3106,7 @@ namespace glm
                         int fatherBoneSpecificIndex = fatherBone->getSpecificBoneIndex();
                         size_t fatherBoneIndexInCache = specificToCacheBoneIndices[fatherBoneSpecificIndex];
 
-                        float(&fatherQuatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + fatherBoneIndexInCache];
+                        float (&fatherQuatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + fatherBoneIndexInCache];
                         Vector3 fatherBoneWPos(frameData->_bonePositions[entityData->bonePositionOffset + fatherBoneIndexInCache]);
 
                         fatherBoneWOri.setValues(fatherQuatValue);
@@ -3207,6 +3285,15 @@ namespace glm
                 if (geoStatus == glm::crowdio::GIO_SUCCESS)
                 {
                     entityData->geometryFileIdx = outputData._geometryFileIndexes[0];
+
+                    const GeometryAsset* geometryAsset = entityData->inputGeoData._character->getGeometryAsset(entityData->inputGeoData._geometryTag, entityData->geometryFileIdx);
+                    if (geometryAsset)
+                    {
+                        GlmString lodLevelString;
+                        getStringFromLODLevel(static_cast<LODLevelFlags::Value>(geometryAsset->_lodLevel), lodLevelString);
+                        entityData->lodName = TfToken(lodLevelString.c_str());
+                    }
+
                     size_t meshCount = outputData._meshAssetNameIndices.size();
 
                     glm::PODArray<SkinMeshData*>* meshDataArray = NULL;
@@ -3245,7 +3332,7 @@ namespace glm
                         // Extract frame
                         if (outputData._geoBeInfo._idGeometryFileIdx != -1)
                         {
-                            float(&geometryFrameCacheData)[3] = frameData->_geoBehaviorAnimFrameInfo[outputData._geoBeInfo._geoDataIndex];
+                            float (&geometryFrameCacheData)[3] = frameData->_geoBehaviorAnimFrameInfo[outputData._geoBeInfo._geoDataIndex];
                             double frameRate(FbxTime::GetFrameRate(fbxCharacter->touchFBXScene()->GetGlobalSettings().GetTimeMode()));
                             fbxTime.SetGlobalTimeMode(FbxTime::eCustom, frameRate);
                             fbxTime.SetMilliSeconds(long((double)geometryFrameCacheData[0] / frameRate * 1000.0));

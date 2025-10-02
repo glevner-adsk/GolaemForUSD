@@ -72,6 +72,10 @@ namespace glm
 
                 GfVec3f extent{0, 0, 0};
 
+                size_t geometryFileIdx = 0;
+
+                TfToken lodName = TfToken("");
+
                 ~EntityData();
                 void initEntityLock();
             };
@@ -82,8 +86,6 @@ namespace glm
             {
                 glm::PODArray<SkinMeshLodData*> meshLodData; // used when lod is enabled (glmLodMode > 0)
                 glm::PODArray<SkinMeshData*> meshData;       // used when no lod (glmLodMode == 0)
-
-                size_t geometryFileIdx = 0; // to check if LOD changed
             };
 
             struct SkelAnimData;
