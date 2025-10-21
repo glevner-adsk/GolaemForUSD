@@ -385,10 +385,14 @@ else()
             if (MSVC)
                 # Disallow Boost auto-linking.
                 add_definitions(-DBOOST_ALL_NO_LIB)
-            endif ()
+
+                set(KATANA_USD_LIB_EXT ".lib")
+            else()
+                set(KATANA_USD_LIB_EXT ".so")
+            endif()
 
             foreach(katana_usd_lib ${KATANA_USD_LIBS})
-                target_link_libraries(${PROJECT_NAME} "${KATANA_ROOT}/bin/${katana_usd_lib}.lib")
+                target_link_libraries(${PROJECT_NAME} "${KATANA_ROOT}/bin/${katana_usd_lib}${KATANA_USD_LIB_EXT}")
             endforeach()
 
             target_link_libraries(${PROJECT_NAME} Python::Module)
