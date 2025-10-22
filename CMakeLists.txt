@@ -367,16 +367,56 @@ else()
             endif ()
         endif()
     elseif(BUILD_USD_KATANA)
-        target_link_libraries(${PROJECT_NAME} 
-            arch
-            gf
-            pcp
-            sdf
-            tf
-            usd
-            usdGeom
-            vt
-        )
+        if(KATANA_VERSION VERSION_GREATER_EQUAL "5.0")
+            if (MSVC)
+                set(KATANA_BOOST_PYTHON_LIB foundryboost_python${PYTHON_VERSION}${PYTHON_SUBVERSION}-${BUILD_COMPILER_VERSION_EXACT}-mt-x64-${KATANA_BOOST_VERSION})
+            else()
+                set(KATANA_BOOST_PYTHON_LIB foundryboost_python${PYTHON_VERSION}${PYTHON_SUBVERSION})
+            endif()
+            set(KATANA_USD_LIBS
+                fnarch
+                fngf
+                fnpcp
+                fnsdf
+                fntf
+                fnusd
+                fnusdGeom
+                fnvt
+                tbb
+                ${KATANA_BOOST_PYTHON_LIB}
+            )
+
+            if (MSVC)
+                # Disallow Boost auto-linking.
+                add_definitions(-DBOOST_ALL_NO_LIB)
+                set(KATANA_USD_LIB_PREFIX "")
+                set(KATANA_USD_LIB_EXT ".lib")
+            else()
+                set(KATANA_USD_LIB_PREFIX "lib")
+                set(KATANA_USD_LIB_EXT ".so")
+            endif()
+
+            foreach(katana_usd_lib ${KATANA_USD_LIBS})
+                target_link_libraries(${PROJECT_NAME} "${KATANA_ROOT}/bin/${KATANA_USD_LIB_PREFIX}${katana_usd_lib}${KATANA_USD_LIB_EXT}")
+            endforeach()
+
+            target_link_libraries(${PROJECT_NAME} Python::Module)
+
+            target_include_directories(${PROJECT_NAME} PRIVATE ${KATANA_USD_INCLUDE_DIR})
+            target_include_directories(${PROJECT_NAME} PRIVATE ${KATANA_BOOST_INCLUDE_DIR})
+            target_include_directories(${PROJECT_NAME} PRIVATE ${KATANA_TBB_INCLUDE_DIR})
+        else()
+            target_link_libraries(${PROJECT_NAME} 
+                arch
+                gf
+                pcp
+                sdf
+                tf
+                usd
+                usdGeom
+                vt
+            )
+        endif()
     else()
         target_link_libraries( ${PROJECT_NAME} usd usdGeom)
     endif()

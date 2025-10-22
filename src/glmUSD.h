@@ -1,8 +1,8 @@
 /***************************************************************************
-*                                                                          *
-*  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
-*                                                                          *
-***************************************************************************/
+ *                                                                          *
+ *  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
+ *                                                                          *
+ ***************************************************************************/
 
 #pragma once
 
@@ -13,7 +13,14 @@
     __pragma(warning(push)); \
     __pragma(warning(disable : 4003 4244 4305 4100 4275 4127 4996 4800 4201));
 #else
+#if (defined(__GNUC__) && (__GNUC__ >= 9))
+#define DO_PRAGMA(x) _Pragma(#x)
+#define USD_INCLUDES_START         \
+    DO_PRAGMA(GCC diagnostic push) \
+    DO_PRAGMA(GCC diagnostic ignored "-Wclass-memaccess")
+#else
 #define USD_INCLUDES_START
+#endif
 #endif
 #endif
 
@@ -22,10 +29,14 @@
 #define USD_INCLUDES_END \
     __pragma(warning(pop));
 #else
+#if (defined(__GNUC__) && (__GNUC__ >= 9))
+#define USD_INCLUDES_END \
+    DO_PRAGMA(GCC diagnostic pop)
+#else
 #define USD_INCLUDES_END
 #endif
 #endif
-
+#endif
 
 namespace glm
 {
@@ -36,5 +47,5 @@ namespace glm
 
         /// finish the Golaem USD library
         extern void finish();
-    }
+    } // namespace usdplugin
 } // namespace glm
