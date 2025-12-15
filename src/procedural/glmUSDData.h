@@ -1,8 +1,8 @@
 /***************************************************************************
-*                                                                          *
-*  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
-*                                                                          *
-***************************************************************************/
+ *                                                                          *
+ *  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
+ *                                                                          *
+ ***************************************************************************/
 
 #pragma once
 
@@ -52,7 +52,8 @@ namespace glm
     xx(TfToken, glmAttributeNamespace, "")          \
     xx(short, glmLodMode, 0)                        \
     xx(GfVec3f, glmCameraPos, 0)                    \
-    xx(TfToken, glmProceduralFile, "")
+    xx(TfToken, glmProceduralFile, "")              \
+    xx(int, glmCachedFramesCount, 3)
         // clang-format on
 
         // A token of the same name must be defined for each parameter in the macro
@@ -80,7 +81,8 @@ namespace glm
     (glmAttributeNamespace)             \
     (glmLodMode)                        \
     (glmCameraPos)                      \
-    (glmProceduralFile)
+    (glmProceduralFile)                 \
+    (glmCachedFramesCount)
         // clang-format on
 
 #ifdef _MSC_VER

@@ -467,14 +467,14 @@ namespace glm
                 {
                     if (TfMapLookupPtr(*_skelEntityProperties, nameToken) != NULL)
                     {
-                        if (TfMapLookupPtr(_skelEntityDataMap, primPath) != NULL)
+                        if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                         {
                             return SdfSpecTypeAttribute;
                         }
                     }
                     if (TfMapLookupPtr(*_skelEntityRelationships, nameToken) != NULL)
                     {
-                        if (TfMapLookupPtr(_skelEntityDataMap, primPath) != NULL)
+                        if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                         {
                             return SdfSpecTypeRelationship;
                         }
@@ -486,10 +486,10 @@ namespace glm
                             return SdfSpecTypeAttribute;
                         }
                     }
-                    if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                    if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                     {
-                        if (TfMapLookupPtr(entityData->ppAttrIndexes, nameToken) != NULL ||
-                            TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken) != NULL)
+                        if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
+                            TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
                         {
                             return SdfSpecTypeAttribute;
                         }
@@ -499,7 +499,7 @@ namespace glm
                 {
                     if (TfMapLookupPtr(*_skinMeshEntityProperties, nameToken) != NULL)
                     {
-                        if (TfMapLookupPtr(_skinMeshEntityDataMap, primPath) != NULL)
+                        if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                         {
                             return SdfSpecTypeAttribute;
                         }
@@ -525,10 +525,10 @@ namespace glm
                             return SdfSpecTypeRelationship;
                         }
                     }
-                    if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath))
+                    if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                     {
-                        if (TfMapLookupPtr(entityData->ppAttrIndexes, nameToken) != NULL ||
-                            TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken) != NULL)
+                        if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
+                            TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
                         {
                             return SdfSpecTypeAttribute;
                         }
@@ -632,7 +632,7 @@ namespace glm
                 {
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                     {
-                        if (TfMapLookupPtr(_skelEntityDataMap, path) != NULL)
+                        if (TfMapLookupPtr(_entityDataMap, path) != NULL)
                         {
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(SdfSpecifierOver);
                         }
@@ -654,7 +654,7 @@ namespace glm
                     // params.
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                     {
-                        if (TfMapLookupPtr(_skelEntityDataMap, path) != NULL)
+                        if (TfMapLookupPtr(_entityDataMap, path) != NULL)
                         {
                             // empty type for overrides
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken(""));
@@ -666,7 +666,7 @@ namespace glm
                     }
                     else
                     {
-                        if (TfMapLookupPtr(_skinMeshEntityDataMap, path) != NULL || TfMapLookupPtr(_skinMeshLodDataMap, path) != NULL)
+                        if (TfMapLookupPtr(_entityDataMap, path) != NULL || TfMapLookupPtr(_skinMeshLodDataMap, path) != NULL)
                         {
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken("Xform"));
                         }
@@ -691,12 +691,12 @@ namespace glm
 
                 if (field == SdfFieldKeys->Kind)
                 {
-                    if (TfMapLookupPtr(_primChildNames, path) != NULL && TfMapLookupPtr(_skinMeshEntityDataMap, path) == NULL)
+                    if (TfMapLookupPtr(_primChildNames, path) != NULL && TfMapLookupPtr(_entityDataMap, path) == NULL)
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken("group"));
                     }
 
-                    else if (TfMapLookupPtr(_skinMeshEntityDataMap, path) != NULL)
+                    else if (TfMapLookupPtr(_entityDataMap, path) != NULL)
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken("component"));
                     }
@@ -708,20 +708,20 @@ namespace glm
 
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                     {
-                        if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                        if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                         {
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(!entityData->excluded);
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(!(*entityDataPtr)->excluded);
                         }
                     }
                     else
                     {
-                        if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath))
+                        if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                         {
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(!entityData->excluded);
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(!(*entityDataPtr)->excluded);
                         }
-                        if (const SkinMeshLodData* lodData = TfMapLookupPtr(_skinMeshLodDataMap, primPath))
+                        if (SkinMeshLodMapData* lodMapData = TfMapLookupPtr(_skinMeshLodDataMap, primPath))
                         {
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(_params.glmLodMode == 2 || lodData->enabled); // always active when not using static lod
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(_params.glmLodMode == 2 || lodMapData->entityData->lodEnabled[lodMapData->lodIndex] > 0); // always active when not using static lod
                         }
                     }
                 }
@@ -731,9 +731,9 @@ namespace glm
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                     {
                         SdfPath primPath = path.GetAbsoluteRootOrPrimPath();
-                        if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                        if (EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                         {
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->referencedUsdCharacter);
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(static_cast<SkelEntityData*>(entityDataPtr->getImpl())->referencedUsdCharacter);
                         }
                     }
                 }
@@ -743,9 +743,9 @@ namespace glm
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                     {
                         SdfPath primPath = path.GetAbsoluteRootOrPrimPath();
-                        if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                        if (EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                         {
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->geoVariants);
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(static_cast<SkelEntityData*>(entityDataPtr->getImpl())->geoVariants);
                         }
                     }
                 }
@@ -757,7 +757,7 @@ namespace glm
 
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                     {
-                        if (TfMapLookupPtr(_skelEntityDataMap, path) == NULL && TfMapLookupPtr(_skelAnimDataMap, path) == NULL)
+                        if (TfMapLookupPtr(_entityDataMap, path) == NULL && TfMapLookupPtr(_skelAnimDataMap, path) == NULL)
                         {
                             if (const std::vector<TfToken>* childNames = TfMapLookupPtr(_primChildNames, path))
                             {
@@ -791,17 +791,17 @@ namespace glm
                     // Leaf prims have the same specified set of property children.
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                     {
-                        if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, path))
+                        if (EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, path))
                         {
                             std::vector<TfToken> entityTokens = _skelEntityPropertyTokens->allTokens;
                             entityTokens.insert(entityTokens.end(), _skelEntityRelationshipTokens->allTokens.begin(), _skelEntityRelationshipTokens->allTokens.end());
                             // add pp attributes
-                            for (const auto& itAttr : entityData->ppAttrIndexes)
+                            for (const auto& itAttr : (*entityDataPtr)->ppAttrIndexes)
                             {
                                 entityTokens.push_back(itAttr.first);
                             }
                             // add shader attributes
-                            for (const auto& itAttr : entityData->shaderAttrIndexes)
+                            for (const auto& itAttr : (*entityDataPtr)->shaderAttrIndexes)
                             {
                                 entityTokens.push_back(itAttr.first);
                             }
@@ -814,16 +814,16 @@ namespace glm
                     }
                     else
                     {
-                        if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, path))
+                        if (EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, path))
                         {
                             std::vector<TfToken> entityTokens = _skinMeshEntityPropertyTokens->allTokens;
                             // add pp attributes
-                            for (const auto& itAttr : entityData->ppAttrIndexes)
+                            for (const auto& itAttr : (*entityDataPtr)->ppAttrIndexes)
                             {
                                 entityTokens.push_back(itAttr.first);
                             }
                             // add shader attributes
-                            for (const auto& itAttr : entityData->shaderAttrIndexes)
+                            for (const auto& itAttr : (*entityDataPtr)->shaderAttrIndexes)
                             {
                                 entityTokens.push_back(itAttr.first);
                             }
@@ -873,7 +873,7 @@ namespace glm
             if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
             {
                 // Visit the property specs which exist only on entity prims.
-                for (auto& it : _skelEntityDataMap)
+                for (auto& it : _entityDataMap)
                 {
                     for (const TfToken& propertyName : _skelEntityPropertyTokens->allTokens)
                     {
@@ -890,7 +890,7 @@ namespace glm
                         }
                     }
 
-                    for (const auto& itAttr : it.second.ppAttrIndexes)
+                    for (const auto& itAttr : it.second->ppAttrIndexes)
                     {
                         if (!visitor->VisitSpec(data, it.first.AppendProperty(itAttr.first)))
                         {
@@ -898,7 +898,7 @@ namespace glm
                         }
                     }
 
-                    for (const auto& itAttr : it.second.shaderAttrIndexes)
+                    for (const auto& itAttr : it.second->shaderAttrIndexes)
                     {
                         if (!visitor->VisitSpec(data, it.first.AppendProperty(itAttr.first)))
                         {
@@ -920,7 +920,7 @@ namespace glm
             else
             {
                 // Visit the property specs which exist only on entity prims.
-                for (auto& it : _skinMeshEntityDataMap)
+                for (auto& it : _entityDataMap)
                 {
                     for (const TfToken& propertyName : _skinMeshEntityPropertyTokens->allTokens)
                     {
@@ -930,7 +930,7 @@ namespace glm
                         }
                     }
 
-                    for (const auto& itAttr : it.second.ppAttrIndexes)
+                    for (const auto& itAttr : it.second->ppAttrIndexes)
                     {
                         if (!visitor->VisitSpec(data, it.first.AppendProperty(itAttr.first)))
                         {
@@ -938,7 +938,7 @@ namespace glm
                         }
                     }
 
-                    for (const auto& itAttr : it.second.shaderAttrIndexes)
+                    for (const auto& itAttr : it.second->shaderAttrIndexes)
                     {
                         if (!visitor->VisitSpec(data, it.first.AppendProperty(itAttr.first)))
                         {
@@ -1013,7 +1013,7 @@ namespace glm
                     {
                         if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skelEntityProperties, nameToken))
                         {
-                            if (TfMapLookupPtr(_skelEntityDataMap, primPath) != NULL)
+                            if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                             {
                                 // Include time sample field in the property is animated.
                                 if (propInfo->isAnimated)
@@ -1028,12 +1028,12 @@ namespace glm
                         }
                         if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skelAnimProperties, nameToken))
                         {
-                            if (const SkelAnimData* animData = TfMapLookupPtr(_skelAnimDataMap, primPath))
+                            if (const SkelEntityData::SP* skelEntityDataPtr = TfMapLookupPtr(_skelAnimDataMap, primPath))
                             {
                                 // Include time sample field in the property is animated.
                                 if (propInfo->isAnimated)
                                 {
-                                    if (nameToken == _skelAnimPropertyTokens->scales && !animData->scalesAnimated)
+                                    if (nameToken == _skelAnimPropertyTokens->scales && !(*skelEntityDataPtr)->scalesAnimated)
                                     {
                                         // scales are not always animated
                                         return nonAnimPropFields;
@@ -1048,15 +1048,15 @@ namespace glm
                         }
                         if (TfMapLookupPtr(*_skelEntityRelationships, nameToken) != NULL)
                         {
-                            if (TfMapLookupPtr(_skelEntityDataMap, primPath) != NULL)
+                            if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                             {
                                 return relationshipFields;
                             }
                         }
-                        if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                        if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                         {
-                            if (TfMapLookupPtr(entityData->ppAttrIndexes, nameToken) != NULL ||
-                                TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken) != NULL)
+                            if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
+                                TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
                             {
                                 // pp or shader attributes are animated
                                 return animPropFields;
@@ -1067,7 +1067,7 @@ namespace glm
                     {
                         if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshEntityProperties, nameToken))
                         {
-                            if (TfMapLookupPtr(_skinMeshEntityDataMap, primPath) != NULL)
+                            if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                             {
                                 // Include time sample field in the property is animated.
                                 if (propInfo->isAnimated)
@@ -1125,10 +1125,10 @@ namespace glm
                                 return relationshipFields;
                             }
                         }
-                        if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath))
+                        if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                         {
-                            if (TfMapLookupPtr(entityData->ppAttrIndexes, nameToken) != NULL ||
-                                TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken) != NULL)
+                            if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
+                                TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
                             {
                                 // pp or shader attributes are animated
                                 return animPropFields;
@@ -1162,7 +1162,7 @@ namespace glm
                 // Prim spec. Different fields for leaf and non-leaf prims.
                 if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
                 {
-                    if (TfMapLookupPtr(_skelEntityDataMap, path) != NULL)
+                    if (TfMapLookupPtr(_entityDataMap, path) != NULL)
                     {
                         static std::vector<TfToken> entityPrimFields(
                             {SdfFieldKeys->Specifier,
@@ -1193,7 +1193,7 @@ namespace glm
                 else
                 {
                     // Prim spec. Different fields for leaf and non-leaf prims.
-                    if (TfMapLookupPtr(_skinMeshEntityDataMap, path) != NULL)
+                    if (TfMapLookupPtr(_entityDataMap, path) != NULL)
                     {
                         static std::vector<TfToken> entityPrimFields(
                             {SdfFieldKeys->Specifier,
@@ -1278,13 +1278,8 @@ namespace glm
                 *tLower = *tUpper = _endFrame;
                 return true;
             }
-            // Lower bound is the integer time. Upper bound will be the same unless the
-            // time itself is non-integer, in which case it'll be the next integer time.
-            *tLower = *tUpper = int(time);
-            if (time > *tUpper)
-            {
-                *tUpper += 1.0;
-            }
+            // set the lower and upper time to the same value
+            *tLower = *tUpper = time;
             return true;
         }
 
@@ -1313,75 +1308,67 @@ namespace glm
         }
 
         //-----------------------------------------------------------------------------
-        bool GolaemUSD_DataImpl::_QueryEntityAttributes(const EntityData* genericEntityData, const TfToken& nameToken, const double& frame, VtValue* value)
+        bool GolaemUSD_DataImpl::_QueryEntityAttributes(EntityFrameData::SP entityFrameData, const TfToken& nameToken, VtValue* value)
         {
-            if (const size_t* ppAttrIdx = TfMapLookupPtr(genericEntityData->ppAttrIndexes, nameToken))
+            if (const size_t* ppAttrIdx = TfMapLookupPtr(entityFrameData->entityData->ppAttrIndexes, nameToken))
             {
                 if (value)
                 {
-                    if (*ppAttrIdx < genericEntityData->floatPPAttrValues.size())
+                    if (*ppAttrIdx < entityFrameData->floatPPAttrValues.size())
                     {
                         // this is a float PP attribute
                         size_t floatAttrIdx = *ppAttrIdx;
-                        *value = VtValue(genericEntityData->floatPPAttrValues[floatAttrIdx]);
+                        *value = VtValue(entityFrameData->floatPPAttrValues[floatAttrIdx]);
                     }
                     else
                     {
                         // this is a vector PP attribute
-                        size_t vectAttrIdx = *ppAttrIdx - genericEntityData->floatPPAttrValues.size();
-                        *value = VtValue(genericEntityData->vectorPPAttrValues[vectAttrIdx]);
+                        size_t vectAttrIdx = *ppAttrIdx - entityFrameData->floatPPAttrValues.size();
+                        *value = VtValue(entityFrameData->vectorPPAttrValues[vectAttrIdx]);
                     }
                 }
                 return true;
             }
-            if (const size_t* shaderAttrIdx = TfMapLookupPtr(genericEntityData->shaderAttrIndexes, nameToken))
+            if (const size_t* shaderAttrIdx = TfMapLookupPtr(entityFrameData->entityData->shaderAttrIndexes, nameToken))
             {
                 if (value)
                 {
-                    const glm::ShaderAttribute& shaderAttr = genericEntityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
-                    const glm::ShaderAssetDataContainer* shaderDataContainer = NULL;
+                    const glm::ShaderAttribute& shaderAttr = entityFrameData->entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
+                    size_t specificAttrIdx = _globalToSpecificShaderAttrIdxPerCharPerCrowdField[entityFrameData->entityData->cfIdx][entityFrameData->entityData->inputGeoData._characterIdx][*shaderAttrIdx];
+                    switch (shaderAttr._type)
                     {
-                        glm::ScopedLock<glm::Mutex> cachedSimuLock(*genericEntityData->cachedSimulationLock);
-                        shaderDataContainer = genericEntityData->cachedSimulation->getFinalShaderData(frame, UINT32_MAX, true);
+                    case glm::ShaderAttributeType::INT:
+                    {
+                        glm::GlmString attrName, subAttrName;
+                        glm::crowdio::RendererAttributeType::Value overrideType(glm::crowdio::RendererAttributeType::END);
+                        glm::crowdio::parseRendererAttribute("arnold", shaderAttr._name, attrName, subAttrName, overrideType);
+                        if (overrideType == glm::crowdio::RendererAttributeType::BOOL)
+                        {
+                            *value = VtValue(entityFrameData->intShaderAttrValues[specificAttrIdx] != 0);
+                        }
+                        else
+                        {
+                            *value = VtValue(entityFrameData->intShaderAttrValues[specificAttrIdx]);
+                        }
                     }
-                    if (shaderDataContainer != NULL)
+                    break;
+                    case glm::ShaderAttributeType::FLOAT:
                     {
-                        size_t specificAttrIdx = shaderDataContainer->globalToSpecificShaderAttrIdxPerChar[genericEntityData->inputGeoData._characterIdx][*shaderAttrIdx];
-                        switch (shaderAttr._type)
-                        {
-                        case glm::ShaderAttributeType::INT:
-                        {
-                            glm::GlmString attrName, subAttrName;
-                            glm::crowdio::RendererAttributeType::Value overrideType(glm::crowdio::RendererAttributeType::END);
-                            glm::crowdio::parseRendererAttribute("arnold", shaderAttr._name, attrName, subAttrName, overrideType);
-                            if (overrideType == glm::crowdio::RendererAttributeType::BOOL)
-                            {
-                                *value = VtValue(genericEntityData->intShaderAttrValues[specificAttrIdx] != 0);
-                            }
-                            else
-                            {
-                                *value = VtValue(genericEntityData->intShaderAttrValues[specificAttrIdx]);
-                            }
-                        }
+                        *value = VtValue(entityFrameData->floatShaderAttrValues[specificAttrIdx]);
+                    }
+                    break;
+                    case glm::ShaderAttributeType::STRING:
+                    {
+                        *value = VtValue(entityFrameData->stringShaderAttrValues[specificAttrIdx]);
+                    }
+                    break;
+                    case glm::ShaderAttributeType::VECTOR:
+                    {
+                        *value = VtValue(entityFrameData->vectorShaderAttrValues[specificAttrIdx]);
+                    }
+                    break;
+                    default:
                         break;
-                        case glm::ShaderAttributeType::FLOAT:
-                        {
-                            *value = VtValue(genericEntityData->floatShaderAttrValues[specificAttrIdx]);
-                        }
-                        break;
-                        case glm::ShaderAttributeType::STRING:
-                        {
-                            *value = VtValue(genericEntityData->stringShaderAttrValues[specificAttrIdx]);
-                        }
-                        break;
-                        case glm::ShaderAttributeType::VECTOR:
-                        {
-                            *value = VtValue(genericEntityData->vectorShaderAttrValues[specificAttrIdx]);
-                        }
-                        break;
-                        default:
-                            break;
-                        }
                     }
                 }
                 return true;
@@ -1396,21 +1383,22 @@ namespace glm
             const TfToken& nameToken = path.GetNameToken();
 
             bool isEntityPath = true;
-            const EntityData* genericEntityData = NULL;
             if (_params.glmDisplayMode == GolaemDisplayMode::SKELETON)
             {
-                SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath);
-                isEntityPath = entityData != NULL;
-                SkelAnimData* animData = NULL;
-                if (entityData == NULL)
+                EntityData::SP entityData = nullptr;
+                if (EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
-                    animData = TfMapLookupPtr(_skelAnimDataMap, primPath);
-                    if (animData != NULL)
+                    entityData = *entityDataPtr;
+                }
+                isEntityPath = entityData != nullptr;
+                if (entityData == nullptr)
+                {
+                    if (SkelEntityData::SP* skelEntityDataPtr = TfMapLookupPtr(_skelAnimDataMap, primPath))
                     {
-                        entityData = animData->entityData;
+                        entityData = *skelEntityDataPtr;
                     }
                 }
-                if (entityData == NULL || entityData->excluded)
+                if (entityData == nullptr || entityData->excluded)
                 {
                     return false;
                 }
@@ -1421,88 +1409,83 @@ namespace glm
 
                 // need to lock the entity until all the data is retrieved
                 glm::ScopedLock<glm::Mutex> entityComputeLock(*entityData->entityComputeLock);
-                _ComputeSkelEntity(entityData, frame);
-                genericEntityData = entityData;
+                SkelEntityFrameData::SP skelEntityFrameData = _ComputeSkelEntity(entityData, frame);
 
                 if (isEntityPath)
                 {
                     // this is an entity node
                     if (nameToken == _skelEntityPropertyTokens->visibility)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
                     }
                     if (nameToken == _skelEntityPropertyTokens->extent)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(VtVec3fArray({entityData->pos - entityData->extent, entityData->pos + entityData->extent}));
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(VtVec3fArray({skelEntityFrameData->pos - entityData->extent, skelEntityFrameData->pos + entityData->extent}));
                     }
                     if (nameToken == _skelEntityPropertyTokens->geometryFileId)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->geometryFileIdx);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->geometryFileIdx);
                     }
                     if (nameToken == _skelEntityPropertyTokens->lodName)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->lodName);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->lodName);
                     }
 
-                    return _QueryEntityAttributes(genericEntityData, nameToken, frame, value);
+                    return _QueryEntityAttributes(skelEntityFrameData, nameToken, value);
                 }
                 else
                 {
                     // this is a skel anim node
                     if (nameToken == _skelAnimPropertyTokens->rotations)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(animData->rotations);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->rotations);
                     }
                     if (nameToken == _skelAnimPropertyTokens->scales)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(animData->scales);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->scales);
                     }
                     if (nameToken == _skelAnimPropertyTokens->translations)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(animData->translations);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->translations);
                     }
                 }
             }
             else
             {
                 // Only leaf prim properties have time samples
-                SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath);
-                isEntityPath = entityData != NULL;
+                EntityData::SP entityData = nullptr;
+                if (EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
+                {
+                    entityData = *entityDataPtr;
+                }
+                isEntityPath = entityData != nullptr;
                 bool isMeshLodPath = false;
                 bool isMeshPath = false;
-                SkinMeshLodData* meshLodData = NULL;
-                SkinMeshData* meshData = NULL;
-                if (entityData == NULL)
+                size_t lodIndex = 0;
+                size_t meshIndex = 0;
+                SkinMeshTemplateData::SP skinMeshTemplateData = nullptr;
+                if (entityData == nullptr)
                 {
-                    if (_params.glmLodMode > 0)
+                    const SkinMeshMapData* meshMapData = TfMapLookupPtr(_skinMeshDataMap, primPath);
+                    if (meshMapData != NULL)
                     {
-                        meshLodData = TfMapLookupPtr(_skinMeshLodDataMap, primPath);
-                        if (meshLodData != NULL)
-                        {
-                            entityData = meshLodData->entityData;
-                            isMeshLodPath = true;
-                        }
-                        else
-                        {
-                            meshData = TfMapLookupPtr(_skinMeshDataMap, primPath);
-                            if (meshData != NULL)
-                            {
-                                entityData = meshData->lodData->entityData;
-                                isMeshPath = true;
-                            }
-                        }
+                        entityData = meshMapData->entityData;
+                        lodIndex = meshMapData->lodIndex;
+                        meshIndex = meshMapData->meshIndex;
+                        isMeshPath = true;
                     }
                     else
                     {
-                        meshData = TfMapLookupPtr(_skinMeshDataMap, primPath);
-                        if (meshData != NULL)
+                        const SkinMeshLodMapData* lodMapData = TfMapLookupPtr(_skinMeshLodDataMap, primPath);
+                        if (lodMapData != NULL)
                         {
-                            entityData = meshData->entityData;
-                            isMeshPath = true;
+                            entityData = lodMapData->entityData;
+                            lodIndex = lodMapData->lodIndex;
+                            isMeshLodPath = true;
                         }
                     }
                 }
-                if (entityData == NULL || entityData->excluded)
+                if (entityData == nullptr || entityData->excluded)
                 {
                     return false;
                 }
@@ -1513,8 +1496,7 @@ namespace glm
 
                 // need to lock the entity until all the data is retrieved
                 glm::ScopedLock<glm::Mutex> entityComputeLock(*entityData->entityComputeLock);
-                _ComputeSkinMeshEntity(entityData, frame);
-                genericEntityData = entityData;
+                SkinMeshEntityFrameData::SP entityFrameData = _ComputeSkinMeshEntity(entityData, frame);
 
                 if (isEntityPath)
                 {
@@ -1522,24 +1504,34 @@ namespace glm
                     if (nameToken == _skinMeshEntityPropertyTokens->xformOpTranslate)
                     {
                         // Animated position, anchored at the prim's layout position.
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->pos);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityFrameData->pos);
                     }
                     if (nameToken == _skinMeshEntityPropertyTokens->visibility)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityFrameData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
                     }
                     if (nameToken == _skinMeshEntityPropertyTokens->geometryFileId)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->geometryFileIdx);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityFrameData->geometryFileIdx);
                     }
                     if (nameToken == _skinMeshEntityPropertyTokens->lodName)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityData->lodName);
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(entityFrameData->lodName);
                     }
-                    return _QueryEntityAttributes(genericEntityData, nameToken, frame, value);
+                    return _QueryEntityAttributes(entityFrameData, nameToken, value);
+                }
+                else if (isMeshLodPath)
+                {
+                    SkinMeshLodData::SP meshLodData = entityFrameData->meshLodData[lodIndex];
+                    if (nameToken == _skinMeshLodPropertyTokens->visibility)
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(_params.glmLodMode == 1 || meshLodData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
+                    }
                 }
                 else if (isMeshPath)
                 {
+                    SkinMeshLodData::SP meshLodData = entityFrameData->meshLodData[lodIndex];
+                    SkinMeshData::SP meshData = meshLodData->meshData[meshIndex];
                     // this is a mesh node
                     if (nameToken == _skinMeshPropertyTokens->points)
                     {
@@ -1548,13 +1540,6 @@ namespace glm
                     if (nameToken == _skinMeshPropertyTokens->normals)
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->normals);
-                    }
-                }
-                else if (isMeshLodPath)
-                {
-                    if (nameToken == _skinMeshLodPropertyTokens->visibility)
-                    {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(_params.glmLodMode == 1 || meshLodData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
                     }
                 }
             }
@@ -1759,7 +1744,7 @@ namespace glm
 
             _sgToSsPerChar.resize(_factory->getGolaemCharacters().size());
             _snsIndicesPerChar.resize(_factory->getGolaemCharacters().size());
-            glm::Array<VtTokenArray> jointsPerChar(_factory->getGolaemCharacters().size());
+            _jointsPerChar.resize(_factory->getGolaemCharacters().size());
             for (int iChar = 0, charCount = _factory->getGolaemCharacters().sizeInt(); iChar < charCount; ++iChar)
             {
                 const glm::GolaemCharacter* character = _factory->getGolaemCharacter(iChar);
@@ -1781,7 +1766,7 @@ namespace glm
                 }
 
                 PODArray<int>& characterSnsIndices = _snsIndicesPerChar[iChar];
-                VtTokenArray& characterJoints = jointsPerChar[iChar];
+                VtTokenArray& characterJoints = _jointsPerChar[iChar];
                 characterJoints.resize(character->_converterMapping._skeletonDescription->getBones().size());
                 GlmString boneNameWithHierarchy;
                 for (int iBone = 0, boneCount = character->_converterMapping._skeletonDescription->getBones().sizeInt(); iBone < boneCount; ++iBone)
@@ -1860,48 +1845,49 @@ namespace glm
                 auto& characterTemplateData = _skinMeshTemplateDataPerCharPerLod[0];
                 characterTemplateData.resize(1);
                 auto& lodTemplateData = characterTemplateData[0];
-                SkinMeshTemplateData& templateData = lodTemplateData[{0, 0}];
-                templateData.faceVertexCounts.resize(6);
+                SkinMeshTemplateData::SP templateData = new SkinMeshTemplateData();
+                lodTemplateData[{0, 0}] = templateData;
+                templateData->faceVertexCounts.resize(6);
                 for (size_t iFace = 0; iFace < 6; ++iFace)
                 {
-                    templateData.faceVertexCounts[iFace] = 4;
+                    templateData->faceVertexCounts[iFace] = 4;
                 }
 
                 // face 0
-                templateData.faceVertexIndices.push_back(3);
-                templateData.faceVertexIndices.push_back(2);
-                templateData.faceVertexIndices.push_back(1);
-                templateData.faceVertexIndices.push_back(0);
+                templateData->faceVertexIndices.push_back(3);
+                templateData->faceVertexIndices.push_back(2);
+                templateData->faceVertexIndices.push_back(1);
+                templateData->faceVertexIndices.push_back(0);
 
                 // face 1
-                templateData.faceVertexIndices.push_back(2);
-                templateData.faceVertexIndices.push_back(6);
-                templateData.faceVertexIndices.push_back(5);
-                templateData.faceVertexIndices.push_back(1);
+                templateData->faceVertexIndices.push_back(2);
+                templateData->faceVertexIndices.push_back(6);
+                templateData->faceVertexIndices.push_back(5);
+                templateData->faceVertexIndices.push_back(1);
 
                 // face 2
-                templateData.faceVertexIndices.push_back(3);
-                templateData.faceVertexIndices.push_back(7);
-                templateData.faceVertexIndices.push_back(6);
-                templateData.faceVertexIndices.push_back(2);
+                templateData->faceVertexIndices.push_back(3);
+                templateData->faceVertexIndices.push_back(7);
+                templateData->faceVertexIndices.push_back(6);
+                templateData->faceVertexIndices.push_back(2);
 
                 // face 3
-                templateData.faceVertexIndices.push_back(0);
-                templateData.faceVertexIndices.push_back(4);
-                templateData.faceVertexIndices.push_back(7);
-                templateData.faceVertexIndices.push_back(3);
+                templateData->faceVertexIndices.push_back(0);
+                templateData->faceVertexIndices.push_back(4);
+                templateData->faceVertexIndices.push_back(7);
+                templateData->faceVertexIndices.push_back(3);
 
                 // face 4
-                templateData.faceVertexIndices.push_back(1);
-                templateData.faceVertexIndices.push_back(5);
-                templateData.faceVertexIndices.push_back(4);
-                templateData.faceVertexIndices.push_back(0);
+                templateData->faceVertexIndices.push_back(1);
+                templateData->faceVertexIndices.push_back(5);
+                templateData->faceVertexIndices.push_back(4);
+                templateData->faceVertexIndices.push_back(0);
 
                 // face 5
-                templateData.faceVertexIndices.push_back(5);
-                templateData.faceVertexIndices.push_back(6);
-                templateData.faceVertexIndices.push_back(7);
-                templateData.faceVertexIndices.push_back(4);
+                templateData->faceVertexIndices.push_back(5);
+                templateData->faceVertexIndices.push_back(6);
+                templateData->faceVertexIndices.push_back(7);
+                templateData->faceVertexIndices.push_back(4);
             }
 
             glm::IdsFilter entityIdsFilter(_params.glmEntityIds.GetText());
@@ -1916,6 +1902,7 @@ namespace glm
             SdfPath animationsGroupPath;
             std::vector<TfToken>* animationsChildNames = NULL;
             _cachedSimulationLocks.resize(crowdFieldNames.size(), nullptr);
+            _globalToSpecificShaderAttrIdxPerCharPerCrowdField.resize(crowdFieldNames.size());
             for (size_t iCf = 0, cfCount = crowdFieldNames.size(); iCf < cfCount; ++iCf)
             {
                 const glm::GlmString& glmCfName = crowdFieldNames[iCf];
@@ -1979,6 +1966,7 @@ namespace glm
                 // compute assets if needed
                 const glm::Array<glm::PODArray<int>>& entityAssets = cachedSimulation.getFinalEntityAssets(firstFrameInCache);
                 const glm::ShaderAssetDataContainer* shaderDataContainer = cachedSimulation.getFinalShaderData(firstFrameInCache, UINT32_MAX, true);
+                _globalToSpecificShaderAttrIdxPerCharPerCrowdField[iCf] = shaderDataContainer->globalToSpecificShaderAttrIdxPerChar;
 
                 // create lock for cached simulation
                 glm::Mutex* cachedSimulationLock = new glm::Mutex();
@@ -2018,23 +2006,25 @@ namespace glm
                     _primSpecPaths.insert(entityPath);
                     cfChildNames.push_back(entityNameToken);
 
-                    EntityData* entityData = NULL;
-                    SkinMeshEntityData* skinMeshEntityData = NULL;
-                    SkelEntityData* skelEntityData = NULL;
+                    EntityData::SP entityData = NULL;
+                    SkelEntityData::SP skelEntityData = NULL;
+                    SkinMeshEntityData::SP skinMeshEntityData = NULL;
                     if (displayMode == GolaemDisplayMode::SKELETON)
                     {
-                        skelEntityData = &_skelEntityDataMap[entityPath];
+                        skelEntityData = new SkelEntityData();
                         entityData = skelEntityData;
                     }
                     else
                     {
-                        skinMeshEntityData = &_skinMeshEntityDataMap[entityPath];
+                        skinMeshEntityData = new SkinMeshEntityData();
                         entityData = skinMeshEntityData;
 
                         entityData->inputGeoData._fbxStorage = &getFbxStorage();
                         entityData->inputGeoData._fbxBaker = &getFbxBaker();
                         entityData->inputGeoData._enableLOD = _params.glmLodMode != 0 ? 1 : 0;
                     }
+                    _entityDataMap[entityPath] = entityData;
+                    entityData->cfIdx = iCf;
                     entityData->initEntityLock();
                     entityData->inputGeoData._dirMapRules = dirmapRules;
                     entityData->inputGeoData._entityId = entityId;
@@ -2048,12 +2038,7 @@ namespace glm
                     entityData->inputGeoData._frameDatas.resize(1);
                     entityData->inputGeoData._frameDatas[0] = firstFrameData;
 
-                    entityData->computedTimeSample = firstFrameInCache - 1; // ensure there will be a compute in QueryTimeSample
-
                     entityData->cachedSimulationLock = cachedSimulationLock;
-
-                    entityData->floatPPAttrValues.resize(simuData->_ppFloatAttributeCount, 0);
-                    entityData->vectorPPAttrValues.resize(simuData->_ppVectorAttributeCount, GfVec3f(0));
 
                     entityData->cachedSimulation = &cachedSimulation;
 
@@ -2073,11 +2058,6 @@ namespace glm
                         entityData->excluded = true;
                         continue;
                     }
-
-                    entityData->intShaderAttrValues.resize(shaderDataContainer->specificShaderAttrCountersPerChar[characterIdx][glm::ShaderAttributeType::INT], 0);
-                    entityData->floatShaderAttrValues.resize(shaderDataContainer->specificShaderAttrCountersPerChar[characterIdx][glm::ShaderAttributeType::FLOAT], 0);
-                    entityData->stringShaderAttrValues.resize(shaderDataContainer->specificShaderAttrCountersPerChar[characterIdx][glm::ShaderAttributeType::STRING]);
-                    entityData->vectorShaderAttrValues.resize(shaderDataContainer->specificShaderAttrCountersPerChar[characterIdx][glm::ShaderAttributeType::VECTOR], GfVec3f(0));
 
                     // add pp attributes
                     size_t ppAttrIdx = 0;
@@ -2170,25 +2150,12 @@ namespace glm
                         }
 
                         // fill skel animation data
-                        SkelAnimData& animData = _skelAnimDataMap[animationSourcePath];
-                        animData.entityData = skelEntityData;
-                        skelEntityData->animData = &animData;
-
-                        animData.joints = jointsPerChar[characterIdx];
-                        animData.scales.resize(boneCount);
-                        animData.rotations.resize(boneCount);
-                        animData.translations.resize(boneCount);
                         float entityScale = simuData->_scales[entityData->inputGeoData._entityIndex];
-                        animData.scales.front().Set(entityScale, entityScale, entityScale);
-                        for (size_t iBone = 1; iBone < boneCount; ++iBone)
-                        {
-                            animData.scales[iBone].Set(1, 1, 1);
-                        }
                         PODArray<int>& characterSnsIndices = _snsIndicesPerChar[characterIdx];
-                        animData.scalesAnimated = characterSnsIndices.size() > 0 && simuData->_snsCountPerEntityType[entityType] == characterSnsIndices.size();
-                        if (animData.scalesAnimated)
+                        skelEntityData->scalesAnimated = characterSnsIndices.size() > 0 && simuData->_snsCountPerEntityType[entityType] == characterSnsIndices.size();
+                        if (skelEntityData->scalesAnimated)
                         {
-                            animData.boneSnsOffset = simuData->_snsOffsetPerEntityType[entityType] + simuData->_indexInEntityType[entityData->inputGeoData._entityIndex] * simuData->_snsCountPerEntityType[entityType];
+                            skelEntityData->boneSnsOffset = simuData->_snsOffsetPerEntityType[entityType] + simuData->_indexInEntityType[entityData->inputGeoData._entityIndex] * simuData->_snsCountPerEntityType[entityType];
                         }
 
                         for (size_t iMesh = 0, meshCount = character->_meshAssets.size(); iMesh < meshCount; ++iMesh)
@@ -2202,7 +2169,7 @@ namespace glm
                             skelEntityData->geoVariants[meshName] = meshVariantEnable.c_str();
                         }
 
-                        entityData->geometryFileIdx = 0;
+                        entityData->defaultGeometryFileIdx = 0;
 
                         PODArray<float> overrideMinLodDistances;
                         PODArray<float> overrideMaxLodDistances;
@@ -2215,7 +2182,7 @@ namespace glm
                             uint16_t cacheGeoIdx = entityData->inputGeoData._frameDatas[0]->_geoBehaviorGeometryIds[geoDataIndex];
                             if (cacheGeoIdx != UINT16_MAX)
                             {
-                                entityData->geometryFileIdx = cacheGeoIdx;
+                                entityData->defaultGeometryFileIdx = cacheGeoIdx;
                                 geoFileIdxSet = true;
                             }
                         }
@@ -2252,17 +2219,17 @@ namespace glm
                             }
                         }
 
-                        const GeometryAsset* geometryAsset = character->getGeometryAsset(entityData->inputGeoData._geometryTag, entityData->geometryFileIdx, distanceToCamera, &overrideMinLodDistances, &overrideMaxLodDistances);
+                        const GeometryAsset* geometryAsset = character->getGeometryAsset(entityData->inputGeoData._geometryTag, entityData->defaultGeometryFileIdx, distanceToCamera, &overrideMinLodDistances, &overrideMaxLodDistances);
                         if (geometryAsset)
                         {
                             GlmString lodLevelString;
                             getStringFromLODLevel(static_cast<LODLevelFlags::Value>(geometryAsset->_lodLevel), lodLevelString);
-                            entityData->lodName = TfToken(lodLevelString.c_str());
+                            entityData->defaultLodName = TfToken(lodLevelString.c_str());
                         }
 
                         // set the lod variant
                         lodVariantName = "lod";
-                        lodVariantName += glm::toString(entityData->geometryFileIdx);
+                        lodVariantName += glm::toString(entityData->defaultGeometryFileIdx);
                         skelEntityData->geoVariants[lodVariantSetName.c_str()] = lodVariantName.c_str();
                     }
                     else if (displayMode == GolaemDisplayMode::BOUNDING_BOX)
@@ -2309,7 +2276,9 @@ namespace glm
                             }
                             const auto& lodTemplateData = characterTemplateData[geometryFileIdx];
 
-                            _InitSkinMeshData(entityData->entityPath, skinMeshEntityData, NULL, skinMeshEntityData->meshData, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
+                            skinMeshEntityData->lodEnabled.assign(1, 1);
+
+                            _InitSkinMeshData(entityData->entityPath, skinMeshEntityData, 0, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
                         }
                         else
                         {
@@ -2321,28 +2290,12 @@ namespace glm
                                 SdfPath lodPath = entityData->entityPath.AppendChild(lodToken);
                                 _primSpecPaths.insert(lodPath);
                                 _primChildNames[entityData->entityPath].push_back(lodToken);
-                                SkinMeshLodData& lodData = _skinMeshLodDataMap[lodPath];
-                                lodData.enabled = true;
-                                lodData.lodPath = lodPath;
-                                lodData.entityData = skinMeshEntityData;
-                                skinMeshEntityData->meshLodData.push_back(&lodData);
+                                SkinMeshLodMapData& lodMapData = _skinMeshLodDataMap[lodPath];
+                                lodMapData.entityData = skinMeshEntityData;
+                                lodMapData.lodIndex = iLod;
 
                                 const auto& lodTemplateData = characterTemplateData[iLod];
-                                _InitSkinMeshData(lodPath, NULL, &lodData, lodData.meshData, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
-                            }
-
-                            if (_params.glmLodMode == 1)
-                            {
-                                // force the first computation in static lod to get accurate lod activation
-                                // use _DoComputeSkinMeshEntity to avoid locks (_InitSimulation can be called from QueryTimeSample)
-                                skinMeshEntityData->computedTimeSample = _startFrame;
-                                _DoComputeSkinMeshEntity(skinMeshEntityData);
-
-                                // only conpute lod the first time when _params.glmLodMode == 1, keep the computed lod afterwards
-                                entityData->inputGeoData._enableLOD = false;
-
-                                // keep the same geoFileIndex
-                                entityData->inputGeoData._geoFileIndex = (int)skinMeshEntityData->geometryFileIdx;
+                                _InitSkinMeshData(lodPath, skinMeshEntityData, iLod, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
                             }
                         }
                     }
@@ -2363,10 +2316,9 @@ namespace glm
         //-----------------------------------------------------------------------------
         void GolaemUSD_DataImpl::_InitSkinMeshData(
             const SdfPath& parentPath,
-            SkinMeshEntityData* entityData,
-            SkinMeshLodData* lodData,
-            glm::PODArray<SkinMeshData*>& meshDataArray,
-            const std::map<std::pair<int, int>, SkinMeshTemplateData>& templateDataPerMesh,
+            SkinMeshEntityData::SP entityData,
+            size_t lodIndex,
+            const std::map<std::pair<int, int>, SkinMeshTemplateData::SP>& templateDataPerMesh,
             const glm::PODArray<int>& gchaMeshIds,
             const glm::PODArray<int>& meshAssetMaterialIndices)
         {
@@ -2377,19 +2329,16 @@ namespace glm
                 {
                     continue;
                 }
-                const SkinMeshTemplateData& meshTemplateData = itMesh->second;
+                SkinMeshTemplateData::SP meshTemplateData = itMesh->second;
 
                 GlmMap<GlmString, SdfPath> meshTreePaths;
-                SdfPath lastMeshTransformPath = _CreateHierarchyFor(meshTemplateData.meshAlias, parentPath, meshTreePaths);
+                SdfPath lastMeshTransformPath = _CreateHierarchyFor(meshTemplateData->meshAlias, parentPath, meshTreePaths);
 
-                SkinMeshData& meshData = _skinMeshDataMap[lastMeshTransformPath];
-                meshData.lodData = lodData;
-                meshData.entityData = entityData;
-                meshDataArray.push_back(&meshData);
-                meshData.meshPath = lastMeshTransformPath;
-                meshData.templateData = &meshTemplateData;
-                meshData.points.resize(meshTemplateData.pointsCount);
-                meshData.normals.resize(meshTemplateData.faceVertexIndices.size());
+                SkinMeshMapData& meshMapData = _skinMeshDataMap[lastMeshTransformPath];
+                meshMapData.lodIndex = lodIndex;
+                meshMapData.entityData = entityData;
+                meshMapData.templateData = meshTemplateData;
+                meshMapData.meshIndex = iMesh;
             }
         }
 
@@ -2413,30 +2362,30 @@ namespace glm
                 // Check that it's one of our animated property names.
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skelEntityProperties, nameToken))
                 {
-                    if (TfMapLookupPtr(_skelEntityDataMap, primPath) != NULL)
+                    if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                     {
                         return propInfo->isAnimated;
                     }
                 }
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skelAnimProperties, nameToken))
                 {
-                    if (const SkelAnimData* animData = TfMapLookupPtr(_skelAnimDataMap, primPath))
+                    if (const SkelEntityData::SP* skelEntityDataPtr = TfMapLookupPtr(_skelAnimDataMap, primPath))
                     {
                         if (propInfo->isAnimated)
                         {
                             if (nameToken == _skelAnimPropertyTokens->scales)
                             {
                                 // scales are not always animated
-                                return animData->scalesAnimated;
+                                return (*skelEntityDataPtr)->scalesAnimated;
                             }
                             return true;
                         }
                     }
                 }
-                if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
-                    if (TfMapLookupPtr(entityData->ppAttrIndexes, nameToken) != NULL ||
-                        TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken) != NULL)
+                    if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
+                        TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
                     {
                         return true;
                     }
@@ -2447,7 +2396,7 @@ namespace glm
                 // Check that it's one of our animated property names.
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshEntityProperties, nameToken))
                 {
-                    if (TfMapLookupPtr(_skinMeshEntityDataMap, primPath) != NULL)
+                    if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                     {
                         return propInfo->isAnimated;
                     }
@@ -2466,10 +2415,10 @@ namespace glm
                         return propInfo->isAnimated;
                     }
                 }
-                if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath))
+                if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
-                    if (TfMapLookupPtr(entityData->ppAttrIndexes, nameToken) != NULL ||
-                        TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken) != NULL)
+                    if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
+                        TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
                     {
                         return true;
                     }
@@ -2509,25 +2458,25 @@ namespace glm
             {
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skelEntityProperties, nameToken))
                 {
-                    if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                    if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                     {
                         if (value)
                         {
                             if (nameToken == _skelEntityPropertyTokens->visibility)
                             {
-                                *value = VtValue(entityData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
+                                *value = VtValue(UsdGeomTokens->inherited);
                             }
                             else if (nameToken == _skelEntityPropertyTokens->entityId)
                             {
-                                *value = VtValue(entityData->inputGeoData._entityId);
+                                *value = VtValue((*entityDataPtr)->inputGeoData._entityId);
                             }
                             else if (nameToken == _skelEntityPropertyTokens->extent)
                             {
-                                *value = VtValue(VtVec3fArray({entityData->pos - entityData->extent, entityData->pos + entityData->extent}));
+                                *value = VtValue(VtVec3fArray({-(*entityDataPtr)->extent, (*entityDataPtr)->extent}));
                             }
                             else if (nameToken == _skelEntityPropertyTokens->geometryTagId)
                             {
-                                *value = VtValue(int32_t(entityData->inputGeoData._geometryTag));
+                                *value = VtValue(int32_t((*entityDataPtr)->inputGeoData._geometryTag));
                             }
                             else
                             {
@@ -2539,25 +2488,13 @@ namespace glm
                 }
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skelAnimProperties, nameToken))
                 {
-                    if (const SkelAnimData* animData = TfMapLookupPtr(_skelAnimDataMap, primPath))
+                    if (const SkelEntityData::SP* skelEntityDataPtr = TfMapLookupPtr(_skelAnimDataMap, primPath))
                     {
                         if (value)
                         {
                             if (nameToken == _skelAnimPropertyTokens->joints)
                             {
-                                *value = VtValue(animData->joints);
-                            }
-                            else if (nameToken == _skelAnimPropertyTokens->rotations)
-                            {
-                                *value = VtValue(animData->rotations);
-                            }
-                            else if (nameToken == _skelAnimPropertyTokens->scales)
-                            {
-                                *value = VtValue(animData->scales);
-                            }
-                            else if (nameToken == _skelAnimPropertyTokens->translations)
-                            {
-                                *value = VtValue(animData->translations);
+                                *value = VtValue(_jointsPerChar[(*skelEntityDataPtr)->inputGeoData._characterIdx]);
                             }
                             else
                             {
@@ -2567,13 +2504,13 @@ namespace glm
                         return true;
                     }
                 }
-                if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
-                    if (const size_t* ppAttrIdx = TfMapLookupPtr(entityData->ppAttrIndexes, nameToken))
+                    if (const size_t* ppAttrIdx = TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken))
                     {
                         if (value)
                         {
-                            if (*ppAttrIdx < entityData->floatPPAttrValues.size())
+                            if (*ppAttrIdx < static_cast<size_t>((*entityDataPtr)->inputGeoData._simuData->_ppFloatAttributeCount))
                             {
                                 // this is a float PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_FLOAT - 1; // enum starts at 1
@@ -2588,11 +2525,11 @@ namespace glm
                         }
                         return true;
                     }
-                    if (const size_t* shaderAttrIdx = TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken))
+                    if (const size_t* shaderAttrIdx = TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken))
                     {
                         if (value)
                         {
-                            const glm::ShaderAttribute& shaderAttr = entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
+                            const glm::ShaderAttribute& shaderAttr = (*entityDataPtr)->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
                             *value = _shaderAttrDefaultValues[shaderAttr._type];
                         }
                         return true;
@@ -2603,7 +2540,7 @@ namespace glm
             {
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshEntityProperties, nameToken))
                 {
-                    if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath))
+                    if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                     {
                         if (value)
                         {
@@ -2611,23 +2548,23 @@ namespace glm
                             // default position.
                             if (nameToken == _skinMeshEntityPropertyTokens->xformOpTranslate)
                             {
-                                *value = VtValue(entityData->pos);
+                                *value = VtValue(GfVec3f(0.0f, 0.0f, 0.0f));
                             }
                             else if (nameToken == _skinMeshEntityPropertyTokens->visibility)
                             {
-                                *value = VtValue(entityData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
+                                *value = VtValue(UsdGeomTokens->inherited);
                             }
                             else if (nameToken == _skinMeshEntityPropertyTokens->entityId)
                             {
-                                *value = VtValue(entityData->inputGeoData._entityId);
+                                *value = VtValue((*entityDataPtr)->inputGeoData._entityId);
                             }
                             else if (nameToken == _skinMeshEntityPropertyTokens->geometryTagId)
                             {
-                                *value = VtValue(int32_t(entityData->inputGeoData._geometryTag));
+                                *value = VtValue(int32_t((*entityDataPtr)->inputGeoData._geometryTag));
                             }
                             else if (nameToken == _skinMeshEntityPropertyTokens->extentsHint)
                             {
-                                *value = VtValue(VtVec3fArray({entityData->extent * -1.f, entityData->extent}));
+                                *value = VtValue(VtVec3fArray({-(*entityDataPtr)->extent, (*entityDataPtr)->extent}));
                             }
                             else
                             {
@@ -2641,13 +2578,13 @@ namespace glm
                 }
                 if (TfMapLookupPtr(*_skinMeshLodProperties, nameToken))
                 {
-                    if (const SkinMeshLodData* lodData = TfMapLookupPtr(_skinMeshLodDataMap, primPath))
+                    if (const SkinMeshLodMapData* lodMapData = TfMapLookupPtr(_skinMeshLodDataMap, primPath))
                     {
                         if (value)
                         {
                             if (nameToken == _skinMeshLodPropertyTokens->visibility)
                             {
-                                *value = VtValue(_params.glmLodMode == 1 || lodData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
+                                *value = VtValue(_params.glmLodMode == 1 || lodMapData->entityData->lodEnabled[lodMapData->lodIndex] > 0 ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
                             }
                         }
                         return true;
@@ -2658,33 +2595,33 @@ namespace glm
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshProperties, nameToken))
                 {
                     // Check that it belongs to a leaf prim before getting the default value
-                    if (const SkinMeshData* meshData = TfMapLookupPtr(_skinMeshDataMap, primPath))
+                    if (const SkinMeshMapData* meshMapData = TfMapLookupPtr(_skinMeshDataMap, primPath))
                     {
                         if (value)
                         {
                             if (nameToken == _skinMeshPropertyTokens->points)
                             {
-                                *value = VtValue(meshData->points);
+                                *value = VtValue(meshMapData->templateData->defaultPoints);
                             }
                             else if (nameToken == _skinMeshPropertyTokens->normals)
                             {
-                                *value = VtValue(meshData->normals);
+                                *value = VtValue(meshMapData->templateData->defaultNormals);
                             }
                             else if (nameToken == _skinMeshPropertyTokens->faceVertexCounts)
                             {
-                                *value = VtValue(meshData->templateData->faceVertexCounts);
+                                *value = VtValue(meshMapData->templateData->faceVertexCounts);
                             }
                             else if (nameToken == _skinMeshPropertyTokens->faceVertexIndices)
                             {
-                                *value = VtValue(meshData->templateData->faceVertexIndices);
+                                *value = VtValue(meshMapData->templateData->faceVertexIndices);
                             }
                             else if (nameToken == _skinMeshPropertyTokens->uvs)
                             {
-                                if (meshData->templateData->uvSets.empty())
+                                if (meshMapData->templateData->uvSets.empty())
                                 {
                                     return false;
                                 }
-                                *value = VtValue(meshData->templateData->uvSets.front());
+                                *value = VtValue(meshMapData->templateData->uvSets.front());
                             }
                             else
                             {
@@ -2694,13 +2631,13 @@ namespace glm
                         return true;
                     }
                 }
-                if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath))
+                if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
-                    if (const size_t* ppAttrIdx = TfMapLookupPtr(entityData->ppAttrIndexes, nameToken))
+                    if (const size_t* ppAttrIdx = TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken))
                     {
                         if (value)
                         {
-                            if (*ppAttrIdx < entityData->floatPPAttrValues.size())
+                            if (*ppAttrIdx < static_cast<size_t>((*entityDataPtr)->inputGeoData._simuData->_ppFloatAttributeCount))
                             {
                                 // this is a float PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_FLOAT - 1; // enum starts at 1
@@ -2715,11 +2652,11 @@ namespace glm
                         }
                         return true;
                     }
-                    if (const size_t* shaderAttrIdx = TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken))
+                    if (const size_t* shaderAttrIdx = TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken))
                     {
                         if (value)
                         {
-                            const glm::ShaderAttribute& shaderAttr = entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
+                            const glm::ShaderAttribute& shaderAttr = (*entityDataPtr)->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
                             *value = _shaderAttrDefaultValues[shaderAttr._type];
                         }
                         return true;
@@ -2747,17 +2684,18 @@ namespace glm
                 if (const _PrimRelationshipInfo* relInfo = TfMapLookupPtr(*_skelEntityRelationships, nameToken))
                 {
                     // Check that it belongs to a leaf prim before getting the default value
-                    if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                    if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                     {
                         if (value)
                         {
+                            SkelEntityData* skelEntityData = static_cast<SkelEntityData*>((*entityDataPtr).getImpl());
                             if (nameToken == _skelEntityRelationshipTokens->animationSource)
                             {
-                                *value = VtValue(entityData->animationSourcePath);
+                                *value = VtValue(skelEntityData->animationSourcePath);
                             }
                             else if (nameToken == _skelEntityRelationshipTokens->skeleton)
                             {
-                                *value = VtValue(entityData->skeletonPath);
+                                *value = VtValue(skelEntityData->skeletonPath);
                             }
                             else
                             {
@@ -2773,13 +2711,13 @@ namespace glm
                 if (const _PrimRelationshipInfo* relInfo = TfMapLookupPtr(*_skinMeshRelationships, nameToken))
                 {
                     // Check that it belongs to a leaf prim before getting the default value
-                    if (const SkinMeshData* meshData = TfMapLookupPtr(_skinMeshDataMap, primPath))
+                    if (const SkinMeshMapData* meshMapData = TfMapLookupPtr(_skinMeshDataMap, primPath))
                     {
                         if (value)
                         {
                             if (nameToken == _skinMeshRelationshipTokens->materialBinding)
                             {
-                                *value = VtValue(meshData->templateData->materialPath);
+                                *value = VtValue(meshMapData->templateData->materialPath);
                             }
                             else
                             {
@@ -2860,7 +2798,7 @@ namespace glm
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skelEntityProperties, nameToken))
                 {
                     // Check that it belongs to a leaf prim before getting the type name value
-                    if (TfMapLookupPtr(_skelEntityDataMap, primPath) != NULL)
+                    if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(propInfo->typeName);
                     }
@@ -2877,13 +2815,13 @@ namespace glm
 
                     return false;
                 }
-                if (const SkelEntityData* entityData = TfMapLookupPtr(_skelEntityDataMap, primPath))
+                if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
-                    if (const size_t* ppAttrIdx = TfMapLookupPtr(entityData->ppAttrIndexes, nameToken))
+                    if (const size_t* ppAttrIdx = TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken))
                     {
                         if (value)
                         {
-                            if (*ppAttrIdx < entityData->floatPPAttrValues.size())
+                            if (*ppAttrIdx < static_cast<size_t>((*entityDataPtr)->inputGeoData._simuData->_ppFloatAttributeCount))
                             {
                                 // this is a float PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_FLOAT - 1; // enum starts at 1
@@ -2898,9 +2836,9 @@ namespace glm
                         }
                         return true;
                     }
-                    if (const size_t* shaderAttrIdx = TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken))
+                    if (const size_t* shaderAttrIdx = TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken))
                     {
-                        const glm::ShaderAttribute& shaderAttr = entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
+                        const glm::ShaderAttribute& shaderAttr = (*entityDataPtr)->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken(_shaderAttrTypes[shaderAttr._type].c_str()));
                     }
                 }
@@ -2910,7 +2848,7 @@ namespace glm
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshEntityProperties, nameToken))
                 {
                     // Check that it belongs to a leaf prim before getting the type name value
-                    if (TfMapLookupPtr(_skinMeshEntityDataMap, primPath) != NULL)
+                    if (TfMapLookupPtr(_entityDataMap, primPath) != NULL)
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(propInfo->typeName);
                     }
@@ -2937,13 +2875,13 @@ namespace glm
 
                     return false;
                 }
-                if (const SkinMeshEntityData* entityData = TfMapLookupPtr(_skinMeshEntityDataMap, primPath))
+                if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
-                    if (const size_t* ppAttrIdx = TfMapLookupPtr(entityData->ppAttrIndexes, nameToken))
+                    if (const size_t* ppAttrIdx = TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken))
                     {
                         if (value)
                         {
-                            if (*ppAttrIdx < entityData->floatPPAttrValues.size())
+                            if (*ppAttrIdx < static_cast<size_t>((*entityDataPtr)->inputGeoData._simuData->_ppFloatAttributeCount))
                             {
                                 // this is a float PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_FLOAT - 1; // enum starts at 1
@@ -2958,9 +2896,9 @@ namespace glm
                         }
                         return true;
                     }
-                    if (const size_t* shaderAttrIdx = TfMapLookupPtr(entityData->shaderAttrIndexes, nameToken))
+                    if (const size_t* shaderAttrIdx = TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken))
                     {
-                        const glm::ShaderAttribute& shaderAttr = entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
+                        const glm::ShaderAttribute& shaderAttr = (*entityDataPtr)->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken(_shaderAttrTypes[shaderAttr._type].c_str()));
                     }
                 }
@@ -3010,150 +2948,163 @@ namespace glm
         }
 
         //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_ComputeSkelEntity(SkelEntityData* entityData, double frame)
+        GolaemUSD_DataImpl::SkelEntityFrameData::SP GolaemUSD_DataImpl::_ComputeSkelEntity(EntityData::SP entityData, double frame)
         {
-            if (glm::approxDiff(entityData->computedTimeSample, frame, static_cast<double>(GLM_NUMERICAL_PRECISION)))
+            SkelEntityFrameData::SP skelEntiyFrameData = entityData->getFrameData<SkelEntityFrameData>(frame, _params.glmCachedFramesCount);
+
+            if (skelEntiyFrameData->entityData != nullptr)
             {
+                // getFrameData returned an existing SkelEntityFrameData
+                return skelEntiyFrameData;
+            }
+
+            // getFrameData returned a new SkelEntityFrameData, set entityData to mark it as computed
+            skelEntiyFrameData->entityData = entityData;
+
+            _ComputeEntity(skelEntiyFrameData, frame);
+            if (!skelEntiyFrameData->enabled)
+            {
+                return skelEntiyFrameData;
+            }
+
 #ifdef TRACY_ENABLE
-                ZoneScopedNC("ComputeSkelEntity", GLM_COLOR_CACHE);
+            ZoneScopedNC("ComputeSkelEntity", GLM_COLOR_CACHE);
+            glm::GlmString entityIdStr = "EntityId=" + glm::toString(entityData->inputGeoData._entityId);
+            ZoneText(entityIdStr.c_str(), entityIdStr.size());
+            glm::GlmString frameStr = "Frame=" + glm::toString(frame);
+            ZoneText(frameStr.c_str(), frameStr.size());
 #endif
-                entityData->computedTimeSample = frame;
 
-                _ComputeEntity(entityData);
-                if (!entityData->enabled)
+            SkelEntityData* skelEntityData = static_cast<SkelEntityData*>(entityData.getImpl());
+
+            const glm::crowdio::GlmFrameData* frameData = entityData->inputGeoData._frameDatas[0];
+            const glm::crowdio::GlmSimulationData* simuData = entityData->inputGeoData._simuData;
+
+            const PODArray<int>& characterSnsIndices = _snsIndicesPerChar[entityData->inputGeoData._characterIdx];
+
+            float entityScale = simuData->_scales[entityData->inputGeoData._entityIndex];
+            uint16_t entityType = simuData->_entityTypes[entityData->inputGeoData._entityIndex];
+
+            uint16_t boneCount = simuData->_boneCount[entityType];
+
+            skelEntiyFrameData->scales.resize(boneCount, GfVec3h(1, 1, 1));
+            skelEntiyFrameData->scales.front().Set(entityScale, entityScale, entityScale); // root bone gets entity scale
+            skelEntiyFrameData->rotations.resize(boneCount);
+            skelEntiyFrameData->translations.resize(boneCount);
+
+            const glm::PODArray<size_t>& specificToCacheBoneIndices = entityData->inputGeoData._character->_converterMapping._skeletonDescription->getSpecificToCacheBoneIndices();
+
+            Array<Vector3> specificBonesWorldScales(boneCount, Vector3(1, 1, 1)); // used to fix mesh translations by reverting local scale
+            if (skelEntityData->scalesAnimated)
+            {
+                for (size_t iSnS = 0, snsCount = characterSnsIndices.size(); iSnS < snsCount; ++iSnS)
                 {
-                    return;
+                    int specificBoneIndex = characterSnsIndices[iSnS];
+                    if (specificBoneIndex == 0)
+                    {
+                        // skip root, always gets entity scale
+                        continue;
+                    }
+
+                    GfVec3h& scaleValue = skelEntiyFrameData->scales[specificBoneIndex];
+
+                    float (&snsCacheValues)[4] = frameData->_snsValues[skelEntityData->boneSnsOffset + iSnS];
+
+                    scaleValue[0] = snsCacheValues[0];
+                    scaleValue[1] = snsCacheValues[1];
+                    scaleValue[2] = snsCacheValues[2];
+
+                    specificBonesWorldScales[specificBoneIndex].setValues(snsCacheValues);
                 }
 
-                const glm::crowdio::GlmFrameData* frameData = entityData->inputGeoData._frameDatas[0];
-                const glm::crowdio::GlmSimulationData* simuData = entityData->inputGeoData._simuData;
-
-                const PODArray<int>& characterSnsIndices = _snsIndicesPerChar[entityData->inputGeoData._characterIdx];
-
-                float entityScale = simuData->_scales[entityData->inputGeoData._entityIndex];
-                uint16_t entityType = simuData->_entityTypes[entityData->inputGeoData._entityIndex];
-
-                uint16_t boneCount = simuData->_boneCount[entityType];
-
-                const glm::PODArray<size_t>& specificToCacheBoneIndices = entityData->inputGeoData._character->_converterMapping._skeletonDescription->getSpecificToCacheBoneIndices();
-
-                Array<Vector3> specificBonesWorldScales(boneCount, Vector3(1, 1, 1)); // used to fix mesh translations by reverting local scale
-                SkelAnimData* animData = entityData->animData;
-                if (animData->scalesAnimated)
+                // here all scales are WORLD scales. Need to patch back local scales from there :
+                for (uint16_t iBone = 0; iBone < boneCount; ++iBone)
                 {
-                    // first scale is already set to entityScale
-                    for (uint16_t iBone = 1; iBone < boneCount; ++iBone)
-                    {
-                        animData->scales[iBone].Set(1, 1, 1);
-                    }
-
-                    for (size_t iSnS = 0, snsCount = characterSnsIndices.size(); iSnS < snsCount; ++iSnS)
-                    {
-                        int specificBoneIndex = characterSnsIndices[iSnS];
-                        if (specificBoneIndex == 0)
-                        {
-                            // skip root, always gets entity scale
-                            continue;
-                        }
-
-                        GfVec3h& scaleValue = animData->scales[specificBoneIndex];
-
-                        float (&snsCacheValues)[4] = frameData->_snsValues[animData->boneSnsOffset + iSnS];
-
-                        scaleValue[0] = snsCacheValues[0];
-                        scaleValue[1] = snsCacheValues[1];
-                        scaleValue[2] = snsCacheValues[2];
-
-                        specificBonesWorldScales[specificBoneIndex].setValues(snsCacheValues);
-                    }
-
-                    // here all scales are WORLD scales. Need to patch back local scales from there :
-                    for (uint16_t iBone = 0; iBone < boneCount; ++iBone)
-                    {
-                        GfVec3h& scaleValue = animData->scales[iBone];
-
-                        const HierarchicalBone* currentBone = entityData->inputGeoData._character->_converterMapping._skeletonDescription->getBones()[iBone];
-                        const HierarchicalBone* fatherBone = currentBone->getFather();
-                        // skip scales parented to root, root holds the entityScale and cannot be SnS'ed
-                        if (fatherBone != NULL)
-                        {
-                            const Vector3& fatherScale = specificBonesWorldScales[fatherBone->getSpecificBoneIndex()];
-
-                            scaleValue[0] /= fatherScale[0];
-                            scaleValue[1] /= fatherScale[1];
-                            scaleValue[2] /= fatherScale[2];
-                        }
-                    }
-                }
-
-                for (size_t iBone = 0; iBone < boneCount; ++iBone)
-                {
-                    size_t boneIndexInCache = specificToCacheBoneIndices[iBone];
+                    GfVec3h& scaleValue = skelEntiyFrameData->scales[iBone];
 
                     const HierarchicalBone* currentBone = entityData->inputGeoData._character->_converterMapping._skeletonDescription->getBones()[iBone];
                     const HierarchicalBone* fatherBone = currentBone->getFather();
-
-                    // get translation/rotation values as 3 float
-
-                    Vector3 currentPosValues(frameData->_bonePositions[entityData->bonePositionOffset + boneIndexInCache]); // default
-                    float (&quatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + boneIndexInCache];
-
-                    Quaternion boneWOri(quatValue);
-                    Quaternion fatherBoneWOri(0, 0, 0, 1);
-                    // in joint reference
+                    // skip scales parented to root, root holds the entityScale and cannot be SnS'ed
                     if (fatherBone != NULL)
                     {
-                        int fatherBoneSpecificIndex = fatherBone->getSpecificBoneIndex();
-                        size_t fatherBoneIndexInCache = specificToCacheBoneIndices[fatherBoneSpecificIndex];
+                        const Vector3& fatherScale = specificBonesWorldScales[fatherBone->getSpecificBoneIndex()];
 
-                        float (&fatherQuatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + fatherBoneIndexInCache];
-                        Vector3 fatherBoneWPos(frameData->_bonePositions[entityData->bonePositionOffset + fatherBoneIndexInCache]);
-
-                        fatherBoneWOri.setValues(fatherQuatValue);
-
-                        // in local coordinates
-                        currentPosValues = fatherBoneWOri.computeInverse() * (currentPosValues - fatherBoneWPos);
-                        currentPosValues /= entityScale;
-
-                        // also need to take back parent scale value
-                        if (animData->scalesAnimated && fatherBoneSpecificIndex < specificBonesWorldScales.sizeInt())
-                        {
-                            const Vector3& parentScale = specificBonesWorldScales[fatherBoneSpecificIndex];
-                            currentPosValues[0] /= parentScale.x;
-                            currentPosValues[1] /= parentScale.y;
-                            currentPosValues[2] /= parentScale.z;
-                        }
+                        scaleValue[0] /= fatherScale[0];
+                        scaleValue[1] /= fatherScale[1];
+                        scaleValue[2] /= fatherScale[2];
                     }
-
-                    Quaternion boneLOri = fatherBoneWOri.computeInverse() * boneWOri;
-
-                    animData->translations[iBone] = GfVec3f(currentPosValues.getFloatValues());
-                    animData->rotations[iBone] = GfQuatf(boneLOri.w, boneLOri.x, boneLOri.y, boneLOri.z);
                 }
             }
+
+            for (size_t iBone = 0; iBone < boneCount; ++iBone)
+            {
+                size_t boneIndexInCache = specificToCacheBoneIndices[iBone];
+
+                const HierarchicalBone* currentBone = entityData->inputGeoData._character->_converterMapping._skeletonDescription->getBones()[iBone];
+                const HierarchicalBone* fatherBone = currentBone->getFather();
+
+                // get translation/rotation values as 3 float
+
+                Vector3 currentPosValues(frameData->_bonePositions[entityData->bonePositionOffset + boneIndexInCache]); // default
+                float (&quatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + boneIndexInCache];
+
+                Quaternion boneWOri(quatValue);
+                Quaternion fatherBoneWOri(0, 0, 0, 1);
+                // in joint reference
+                if (fatherBone != NULL)
+                {
+                    int fatherBoneSpecificIndex = fatherBone->getSpecificBoneIndex();
+                    size_t fatherBoneIndexInCache = specificToCacheBoneIndices[fatherBoneSpecificIndex];
+
+                    float (&fatherQuatValue)[4] = frameData->_boneOrientations[entityData->bonePositionOffset + fatherBoneIndexInCache];
+                    Vector3 fatherBoneWPos(frameData->_bonePositions[entityData->bonePositionOffset + fatherBoneIndexInCache]);
+
+                    fatherBoneWOri.setValues(fatherQuatValue);
+
+                    // in local coordinates
+                    currentPosValues = fatherBoneWOri.computeInverse() * (currentPosValues - fatherBoneWPos);
+                    currentPosValues /= entityScale;
+
+                    // also need to take back parent scale value
+                    if (skelEntityData->scalesAnimated && fatherBoneSpecificIndex < specificBonesWorldScales.sizeInt())
+                    {
+                        const Vector3& parentScale = specificBonesWorldScales[fatherBoneSpecificIndex];
+                        currentPosValues[0] /= parentScale.x;
+                        currentPosValues[1] /= parentScale.y;
+                        currentPosValues[2] /= parentScale.z;
+                    }
+                }
+
+                Quaternion boneLOri = fatherBoneWOri.computeInverse() * boneWOri;
+
+                skelEntiyFrameData->translations[iBone] = GfVec3f(currentPosValues.getFloatValues());
+                skelEntiyFrameData->rotations[iBone] = GfQuatf(boneLOri.w, boneLOri.x, boneLOri.y, boneLOri.z);
+            }
+            return skelEntiyFrameData;
         }
 
         //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_ComputeEntity(EntityData* entityData)
+        void GolaemUSD_DataImpl::_ComputeEntity(EntityFrameData::SP entityFrameData, double frame)
         {
+            EntityData::SP entityData = entityFrameData->entityData;
             const glm::crowdio::GlmSimulationData* simuData = entityData->inputGeoData._simuData;
             const glm::crowdio::GlmFrameData* frameData = NULL;
             const glm::ShaderAssetDataContainer* shaderDataContainer = NULL;
             {
                 glm::ScopedLock<glm::Mutex> cachedSimuLock(*entityData->cachedSimulationLock);
-                frameData = entityData->cachedSimulation->getFinalFrameData(entityData->computedTimeSample, UINT32_MAX, true);
-                shaderDataContainer = entityData->cachedSimulation->getFinalShaderData(entityData->computedTimeSample, UINT32_MAX, true);
+                frameData = entityData->cachedSimulation->getFinalFrameData(frame, UINT32_MAX, true);
+                shaderDataContainer = entityData->cachedSimulation->getFinalShaderData(frame, UINT32_MAX, true);
             }
             if (simuData == NULL || frameData == NULL)
             {
-                _InvalidateEntity(entityData);
+                _InvalidateEntity(entityFrameData);
                 return;
             }
 
-            entityData->enabled = frameData->_entityEnabled[entityData->inputGeoData._entityToBakeIndex] == 1;
-            if (!entityData->enabled)
+            entityFrameData->enabled = frameData->_entityEnabled[entityData->inputGeoData._entityToBakeIndex] == 1;
+            if (!entityFrameData->enabled)
             {
-                _InvalidateEntity(entityData);
+                _InvalidateEntity(entityFrameData);
                 return;
             }
 
@@ -3162,7 +3113,14 @@ namespace glm
             const glm::Array<glm::Vector3>& entityVectorShaderData = shaderDataContainer->vectorData[entityData->inputGeoData._entityIndex];
             const glm::Array<glm::GlmString>& entityStringShaderData = shaderDataContainer->stringData[entityData->inputGeoData._entityIndex];
 
-            const PODArray<size_t>& globalToSpecificShaderAttrIdx = shaderDataContainer->globalToSpecificShaderAttrIdxPerChar[entityData->inputGeoData._characterIdx];
+            const PODArray<size_t>& globalToSpecificShaderAttrIdx = _globalToSpecificShaderAttrIdxPerCharPerCrowdField[entityData->cfIdx][entityData->inputGeoData._characterIdx];
+
+            const PODArray<size_t>& characterSpecificShaderAttrCounters = shaderDataContainer->specificShaderAttrCountersPerChar[entityData->inputGeoData._characterIdx];
+
+            entityFrameData->intShaderAttrValues.resize(characterSpecificShaderAttrCounters[glm::ShaderAttributeType::INT], 0);
+            entityFrameData->floatShaderAttrValues.resize(characterSpecificShaderAttrCounters[glm::ShaderAttributeType::FLOAT], 0);
+            entityFrameData->stringShaderAttrValues.resize(characterSpecificShaderAttrCounters[glm::ShaderAttributeType::STRING]);
+            entityFrameData->vectorShaderAttrValues.resize(characterSpecificShaderAttrCounters[glm::ShaderAttributeType::VECTOR], GfVec3f(0));
 
             // compute shader data
             glm::Vector3 vectValue;
@@ -3174,22 +3132,22 @@ namespace glm
                 {
                 case glm::ShaderAttributeType::INT:
                 {
-                    entityData->intShaderAttrValues[specificAttrIdx] = entityIntShaderData[specificAttrIdx];
+                    entityFrameData->intShaderAttrValues[specificAttrIdx] = entityIntShaderData[specificAttrIdx];
                 }
                 break;
                 case glm::ShaderAttributeType::FLOAT:
                 {
-                    entityData->floatShaderAttrValues[specificAttrIdx] = entityFloatShaderData[specificAttrIdx];
+                    entityFrameData->floatShaderAttrValues[specificAttrIdx] = entityFloatShaderData[specificAttrIdx];
                 }
                 break;
                 case glm::ShaderAttributeType::STRING:
                 {
-                    entityData->stringShaderAttrValues[specificAttrIdx] = TfToken(entityStringShaderData[specificAttrIdx].c_str());
+                    entityFrameData->stringShaderAttrValues[specificAttrIdx] = TfToken(entityStringShaderData[specificAttrIdx].c_str());
                 }
                 break;
                 case glm::ShaderAttributeType::VECTOR:
                 {
-                    entityData->vectorShaderAttrValues[specificAttrIdx].Set(entityVectorShaderData[specificAttrIdx].getFloatValues());
+                    entityFrameData->vectorShaderAttrValues[specificAttrIdx].Set(entityVectorShaderData[specificAttrIdx].getFloatValues());
                 }
                 break;
                 default:
@@ -3197,49 +3155,56 @@ namespace glm
                 }
             }
 
+            entityFrameData->floatPPAttrValues.resize(simuData->_ppFloatAttributeCount, 0);
+            entityFrameData->vectorPPAttrValues.resize(simuData->_ppVectorAttributeCount, GfVec3f(0));
+
             // update pp attributes
             for (uint8_t iFloatPPAttr = 0; iFloatPPAttr < simuData->_ppFloatAttributeCount; ++iFloatPPAttr)
             {
-                entityData->floatPPAttrValues[iFloatPPAttr] = frameData->_ppFloatAttributeData[iFloatPPAttr][entityData->inputGeoData._entityToBakeIndex];
+                entityFrameData->floatPPAttrValues[iFloatPPAttr] = frameData->_ppFloatAttributeData[iFloatPPAttr][entityData->inputGeoData._entityToBakeIndex];
             }
             for (uint8_t iVectPPAttr = 0; iVectPPAttr < simuData->_ppVectorAttributeCount; ++iVectPPAttr)
             {
-                entityData->vectorPPAttrValues[iVectPPAttr].Set(frameData->_ppVectorAttributeData[iVectPPAttr][entityData->inputGeoData._entityToBakeIndex]);
+                entityFrameData->vectorPPAttrValues[iVectPPAttr].Set(frameData->_ppVectorAttributeData[iVectPPAttr][entityData->inputGeoData._entityToBakeIndex]);
             }
 
             // update frame before computing geometry
             entityData->inputGeoData._frames.resize(1);
-            entityData->inputGeoData._frames[0] = entityData->computedTimeSample;
+            entityData->inputGeoData._frames[0] = frame;
             entityData->inputGeoData._frameDatas.resize(1);
             entityData->inputGeoData._frameDatas[0] = frameData;
 
             float* rootPos = frameData->_bonePositions[entityData->bonePositionOffset];
-            entityData->pos.Set(rootPos);
+            entityFrameData->pos.Set(rootPos);
         }
 
         //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_ComputeSkinMeshEntity(SkinMeshEntityData* entityData, double frame)
+        GolaemUSD_DataImpl::SkinMeshEntityFrameData::SP GolaemUSD_DataImpl::_ComputeSkinMeshEntity(EntityData::SP entityData, double frame)
         {
-            // check if computation is needed
-            if (glm::approxDiff(entityData->computedTimeSample, frame, static_cast<double>(GLM_NUMERICAL_PRECISION)))
+            SkinMeshEntityFrameData::SP skinMeshEntityFrameData = entityData->getFrameData<SkinMeshEntityFrameData>(frame, _params.glmCachedFramesCount);
+
+            if (skinMeshEntityFrameData->entityData != nullptr)
             {
+                // getFrameData returned an existing SkelEntityFrameData
+                return skinMeshEntityFrameData;
+            }
+
+            // getFrameData returned a new SkinMeshEntityFrameData, set entityData to mark it as computed
+            skinMeshEntityFrameData->entityData = entityData;
+
+            _ComputeEntity(skinMeshEntityFrameData, frame);
+            if (!skinMeshEntityFrameData->enabled)
+            {
+                return skinMeshEntityFrameData;
+            }
+
 #ifdef TRACY_ENABLE
-                ZoneScopedNC("ComputeSkinMeshEntity", GLM_COLOR_CACHE);
+            ZoneScopedNC("ComputeSkinMeshEntity", GLM_COLOR_CACHE);
+            glm::GlmString entityIdStr = "EntityId=" + glm::toString(entityData->inputGeoData._entityId);
+            ZoneText(entityIdStr.c_str(), entityIdStr.size());
+            glm::GlmString frameStr = "Frame=" + glm::toString(frame);
+            ZoneText(frameStr.c_str(), frameStr.size());
 #endif
-
-                entityData->computedTimeSample = frame;
-                _DoComputeSkinMeshEntity(entityData);
-            }
-        }
-
-        //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_DoComputeSkinMeshEntity(SkinMeshEntityData* entityData)
-        {
-            _ComputeEntity(entityData);
-            if (!entityData->enabled)
-            {
-                return;
-            }
 
             // update entity position
 
@@ -3247,7 +3212,15 @@ namespace glm
 
             GolaemDisplayMode::Value displayMode = (GolaemDisplayMode::Value)_params.glmDisplayMode;
 
-            if (displayMode == GolaemDisplayMode::SKINMESH)
+            if (displayMode == GolaemDisplayMode::BOUNDING_BOX)
+            {
+                skinMeshEntityFrameData->meshLodData.resize(1);
+                SkinMeshLodData::SP skinMeshLodData = new SkinMeshLodData();
+                skinMeshLodData->enabled = true;
+                skinMeshLodData->entityData = entityData;
+                skinMeshEntityFrameData->meshLodData[0] = skinMeshLodData;
+            }
+            else if (displayMode == GolaemDisplayMode::SKINMESH)
             {
                 // these variables must be available when glmPrepareEntityGeometry is called below
                 float entityPos[3] = {0, 0, 0};
@@ -3257,7 +3230,7 @@ namespace glm
                 if (entityData->inputGeoData._enableLOD)
                 {
                     // update LOD data
-                    memcpy(entityPos, entityData->pos.data(), sizeof(float[3]));
+                    memcpy(entityPos, skinMeshEntityFrameData->pos.data(), sizeof(float[3]));
                     if (_params.glmLodMode == 1)
                     {
                         // in static lod mode get the camera pos directly from the params
@@ -3281,37 +3254,52 @@ namespace glm
                     entityData->inputGeoData._cameraWorldPosition = cameraPos;
                 }
 
+                auto& characterTemplateData = _skinMeshTemplateDataPerCharPerLod[entityData->inputGeoData._characterIdx];
+
+                skinMeshEntityFrameData->meshLodData.resize(characterTemplateData.size());
+                for (size_t iLod = 0; iLod < characterTemplateData.size(); ++iLod)
+                {
+                    SkinMeshLodData::SP skinMeshLodData = new SkinMeshLodData();
+                    skinMeshLodData->enabled = false;
+                    skinMeshLodData->entityData = entityData;
+                    skinMeshEntityFrameData->meshLodData[iLod] = skinMeshLodData;
+                    skinMeshLodData->meshData.resize(1);
+
+                    SkinMeshData::SP meshData = new SkinMeshData();
+                    skinMeshLodData->meshData[0] = meshData;
+
+                    auto& lodTemplateData = characterTemplateData[skinMeshEntityFrameData->geometryFileIdx];
+                    meshData->templateData = lodTemplateData[{0, 0}];
+                    meshData->points = meshData->templateData->defaultPoints;
+                    meshData->normals = meshData->templateData->defaultNormals;
+                }
+
                 glm::crowdio::GlmGeometryGenerationStatus geoStatus = glm::crowdio::glmPrepareEntityGeometry(&entityData->inputGeoData, &outputData);
                 if (geoStatus == glm::crowdio::GIO_SUCCESS)
                 {
-                    entityData->geometryFileIdx = outputData._geometryFileIndexes[0];
+                    skinMeshEntityFrameData->geometryFileIdx = outputData._geometryFileIndexes[0];
 
-                    const GeometryAsset* geometryAsset = entityData->inputGeoData._character->getGeometryAsset(entityData->inputGeoData._geometryTag, entityData->geometryFileIdx);
+                    const GeometryAsset* geometryAsset = entityData->inputGeoData._character->getGeometryAsset(entityData->inputGeoData._geometryTag, skinMeshEntityFrameData->geometryFileIdx);
                     if (geometryAsset)
                     {
                         GlmString lodLevelString;
                         getStringFromLODLevel(static_cast<LODLevelFlags::Value>(geometryAsset->_lodLevel), lodLevelString);
-                        entityData->lodName = TfToken(lodLevelString.c_str());
+                        skinMeshEntityFrameData->lodName = TfToken(lodLevelString.c_str());
                     }
+
+                    SkinMeshLodData::SP lodData = skinMeshEntityFrameData->meshLodData[_params.glmLodMode == 0 ? 0 : skinMeshEntityFrameData->geometryFileIdx];
+
+                    auto& lodTemplateData = characterTemplateData[skinMeshEntityFrameData->geometryFileIdx];
+
+                    // update lod visibility
+                    lodData->enabled = true;
 
                     size_t meshCount = outputData._meshAssetNameIndices.size();
-
-                    glm::PODArray<SkinMeshData*>* meshDataArray = NULL;
-
-                    if (_params.glmLodMode == 0)
+                    lodData->meshData.resize(meshCount);
+                    for (size_t iRenderMesh = 0; iRenderMesh < meshCount; ++iRenderMesh)
                     {
-                        meshDataArray = &entityData->meshData;
-                    }
-                    else
-                    {
-                        SkinMeshLodData* lodData = entityData->meshLodData[entityData->geometryFileIdx];
-                        // update lod visibility
-                        for (SkinMeshLodData* currentLodData : entityData->meshLodData)
-                        {
-                            currentLodData->enabled = false;
-                        }
-                        lodData->enabled = true;
-                        meshDataArray = &lodData->meshData;
+                        SkinMeshData::SP meshData = new SkinMeshData();
+                        lodData->meshData[iRenderMesh] = meshData;
                     }
 
                     glm::Array<glm::Array<glm::Vector3>>& frameDeformedVertices = outputData._deformedVertices[0];
@@ -3354,8 +3342,6 @@ namespace glm
                                 continue;
                             }
 
-                            SkinMeshData* meshData = meshDataArray->at(iRenderMesh);
-
                             // when fbxMesh == NULL, vertexCount == 0, so no need to check fbxMesh != NULL
                             FbxNode* fbxNode = fbxCharacter->getCharacterFBXMeshes()[iGeoFileMesh];
                             FbxMesh* fbxMesh = fbxCharacter->getCharacterFBXMesh(iGeoFileMesh);
@@ -3387,7 +3373,14 @@ namespace glm
                             vertexMasks.assign(fbxVertexCount, -1);
                             polygonMasks.assign(fbxPolyCount, 0);
 
+                            int meshAssetIndex = outputData._gchaMeshIds[iRenderMesh];
                             int meshMtlIdx = outputData._meshAssetMaterialIndices[iRenderMesh];
+
+                            SkinMeshData::SP meshData = lodData->meshData[iRenderMesh];
+                            meshData->templateData = lodTemplateData[{meshAssetIndex, meshMtlIdx}];
+
+                            meshData->points.resize(meshData->templateData->defaultPoints.size());
+                            meshData->normals.resize(meshData->templateData->defaultNormals.size());
 
                             // check material id and reconstruct data
                             for (unsigned int iFbxPoly = 0; iFbxPoly < fbxPolyCount; ++iFbxPoly)
@@ -3446,7 +3439,7 @@ namespace glm
                                         point.Set(meshVertex.getFloatValues());
                                     }
 
-                                    point -= entityData->pos;
+                                    point -= skinMeshEntityFrameData->pos;
 
                                     ++iActualVertex;
                                 }
@@ -3506,14 +3499,21 @@ namespace glm
                                 continue;
                             }
 
-                            SkinMeshData* meshData = meshDataArray->at(iRenderMesh);
+                            int meshAssetIndex = outputData._gchaMeshIds[iRenderMesh];
+                            int meshMtlIdx = outputData._meshAssetMaterialIndices[iRenderMesh];
+
+                            SkinMeshData::SP meshData = lodData->meshData[iRenderMesh];
+                            meshData->templateData = lodTemplateData[{meshAssetIndex, meshMtlIdx}];
+
+                            meshData->points.resize(meshData->templateData->defaultPoints.size());
+                            meshData->normals.resize(meshData->templateData->defaultNormals.size());
 
                             for (size_t iVertex = 0; iVertex < vertexCount; ++iVertex)
                             {
                                 const glm::Vector3& meshVertex = meshDeformedVertices[iVertex];
                                 GfVec3f& point = meshData->points[iVertex];
                                 point.Set(meshVertex.getFloatValues());
-                                point -= entityData->pos;
+                                point -= skinMeshEntityFrameData->pos;
                             }
 
                             const glm::Array<glm::Vector3>& meshDeformedNormals = frameDeformedNormals[iRenderMesh];
@@ -3554,22 +3554,24 @@ namespace glm
                     }
                 }
             }
+            return skinMeshEntityFrameData;
         }
 
         //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_InvalidateEntity(EntityData* entityData)
+        void GolaemUSD_DataImpl::_InvalidateEntity(EntityFrameData::SP entityFrameData)
         {
-            entityData->enabled = false;
+            EntityData::SP entityData = entityFrameData->entityData;
+            entityFrameData->enabled = false;
             entityData->inputGeoData._frames.clear();
             entityData->inputGeoData._frameDatas.clear();
-            entityData->intShaderAttrValues.clear();
-            entityData->floatShaderAttrValues.clear();
-            entityData->stringShaderAttrValues.clear();
-            entityData->vectorShaderAttrValues.clear();
+            entityFrameData->intShaderAttrValues.clear();
+            entityFrameData->floatShaderAttrValues.clear();
+            entityFrameData->stringShaderAttrValues.clear();
+            entityFrameData->vectorShaderAttrValues.clear();
         }
 
         //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_getCharacterExtent(const EntityData* entityData, GfVec3f& extent) const
+        void GolaemUSD_DataImpl::_getCharacterExtent(EntityData::SP entityData, GfVec3f& extent) const
         {
             glm::Vector3 halfExtents(1, 1, 1);
             size_t geoIdx = 0;
@@ -3584,25 +3586,25 @@ namespace glm
         }
 
         //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_ComputeBboxData(SkinMeshEntityData* entityData)
+        void GolaemUSD_DataImpl::_ComputeBboxData(SkinMeshEntityData::SP entityData)
         {
             glm::GlmString meshName = "BBOX";
 
             GlmMap<GlmString, SdfPath> meshTreePaths;
             SdfPath lastMeshTransformPath = _CreateHierarchyFor(meshName, entityData->entityPath, meshTreePaths);
 
-            SkinMeshData& meshData = _skinMeshDataMap[lastMeshTransformPath];
-            meshData.entityData = entityData;
-            entityData->meshData.push_back(&meshData);
-            meshData.meshPath = lastMeshTransformPath;
-            meshData.templateData = &_skinMeshTemplateDataPerCharPerLod[0][0][{0, 0}];
+            SkinMeshMapData& meshMapData = _skinMeshDataMap[lastMeshTransformPath];
+            meshMapData.lodIndex = 0;
+            meshMapData.meshIndex = 0;
+            meshMapData.entityData = entityData;
+            meshMapData.templateData = _skinMeshTemplateDataPerCharPerLod[0][0][{0, 0}];
 
             // compute the bounding box of the current entity
             GfVec3f halfExtents;
             _getCharacterExtent(entityData, halfExtents);
 
             // create the shape of the bounding box
-            VtVec3fArray& points = meshData.points;
+            VtVec3fArray& points = meshMapData.templateData->defaultPoints;
             points.resize(8);
 
             points[0].Set(
@@ -3645,7 +3647,7 @@ namespace glm
                 +halfExtents[1],
                 -halfExtents[2]);
 
-            VtVec3fArray& vertexNormals = meshData.normals;
+            VtVec3fArray& vertexNormals = meshMapData.templateData->defaultNormals;
             vertexNormals.resize(24);
 
             int vertexIdx = 0;
@@ -3688,7 +3690,7 @@ namespace glm
         }
 
         //-----------------------------------------------------------------------------
-        void GolaemUSD_DataImpl::_ComputeSkinMeshTemplateData(std::map<std::pair<int, int>, SkinMeshTemplateData>& lodTemplateData, const glm::crowdio::InputEntityGeoData& inputGeoData, const glm::crowdio::OutputEntityGeoData& outputData)
+        void GolaemUSD_DataImpl::_ComputeSkinMeshTemplateData(std::map<std::pair<int, int>, SkinMeshTemplateData::SP>& lodTemplateData, const glm::crowdio::InputEntityGeoData& inputGeoData, const glm::crowdio::OutputEntityGeoData& outputData)
         {
             glm::GlmString materialPath = _params.glmMaterialPath.GetText();
             GolaemMaterialAssignMode::Value materialAssignMode = (GolaemMaterialAssignMode::Value)_params.glmMaterialAssignMode;
@@ -3702,8 +3704,8 @@ namespace glm
             {
                 meshName = outputData._meshAssetNames[outputData._meshAssetNameIndices[iRenderMesh]];
                 meshAlias = outputData._meshAssetAliases[outputData._meshAssetNameIndices[iRenderMesh]];
-                int materialIdx = outputData._meshAssetMaterialIndices[iRenderMesh];
                 int meshAssetIndex = outputData._gchaMeshIds[iRenderMesh];
+                int materialIdx = outputData._meshAssetMaterialIndices[iRenderMesh];
                 if (materialIdx != 0)
                 {
                     materialSuffix = glm::toString(materialIdx);
@@ -3718,8 +3720,9 @@ namespace glm
                     meshAlias = meshName;
                 }
 
-                SkinMeshTemplateData& meshTemplateData = lodTemplateData[{meshAssetIndex, materialIdx}];
-                meshTemplateData.meshAlias = meshAlias;
+                SkinMeshTemplateData::SP meshTemplateData = new SkinMeshTemplateData();
+                lodTemplateData[{meshAssetIndex, materialIdx}] = meshTemplateData;
+                meshTemplateData->meshAlias = meshAlias;
 
                 if (outputData._geoType == glm::crowdio::GeometryType::FBX)
                 {
@@ -3783,32 +3786,34 @@ namespace glm
                         }
                     }
 
-                    meshTemplateData.pointsCount = iActualVertex;
+                    meshTemplateData->defaultPoints.resize(iActualVertex, GfVec3f(0.0f, 0.0f, 0.0f));
 
                     for (unsigned int iFbxPoly = 0; iFbxPoly < fbxPolyCount; ++iFbxPoly)
                     {
                         if (polygonMasks[iFbxPoly])
                         {
                             int polySize = fbxMesh->GetPolygonSize(iFbxPoly);
-                            meshTemplateData.faceVertexCounts.push_back(polySize);
+                            meshTemplateData->faceVertexCounts.push_back(polySize);
                             for (int iPolyVertex = 0; iPolyVertex < polySize; ++iPolyVertex)
                             {
                                 // do not reverse polygon order
                                 int iFbxVertex = fbxMesh->GetPolygonVertex(iFbxPoly, iPolyVertex);
                                 int vertexId = vertexMasks[iFbxVertex];
-                                meshTemplateData.faceVertexIndices.push_back(vertexId);
+                                meshTemplateData->faceVertexIndices.push_back(vertexId);
                             } // iPolyVertex
                         }
                     }
 
+                    meshTemplateData->defaultNormals.resize(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
+
                     // find how many uv layers are available
-                    int uvSetCount = fbxMesh->GetLayerCount(FbxLayerElement::eUV);
-                    meshTemplateData.uvSets.resize(uvSetCount);
+                    int uvSetCount = fbxMesh->GetLayerCount(::FbxLayerElement::eUV);
+                    meshTemplateData->uvSets.resize(uvSetCount);
                     FbxLayerElementUV* uvElement = NULL;
                     for (int iUVSet = 0; iUVSet < uvSetCount; ++iUVSet)
                     {
-                        VtVec2fArray& uvs = meshTemplateData.uvSets[iUVSet];
-                        uvs.resize(meshTemplateData.faceVertexIndices.size());
+                        VtVec2fArray& uvs = meshTemplateData->uvSets[iUVSet];
+                        uvs.resize(meshTemplateData->faceVertexIndices.size());
                         FbxLayer* layer = fbxMesh->GetLayer(fbxMesh->GetLayerTypedIndex((int)iUVSet, FbxLayerElement::eUV));
                         uvElement = layer->GetUVs();
                         bool uvsByControlPoint = uvElement->GetMappingMode() == FbxLayerElement::eByControlPoint;
@@ -3872,25 +3877,27 @@ namespace glm
                     glm::crowdio::GlmFileMeshTransform& assetFileMeshTransform = gcgCharacter->getGeometry()._transforms[outputData._transformIndicesInGcgFile[iRenderMesh]];
                     glm::crowdio::GlmFileMesh& assetFileMesh = gcgCharacter->getGeometry()._meshes[assetFileMeshTransform._meshIndex];
 
-                    meshTemplateData.pointsCount = assetFileMesh._vertexCount;
+                    meshTemplateData->defaultPoints.resize(assetFileMesh._vertexCount, GfVec3f(0.0f, 0.0f, 0.0f));
 
                     for (uint32_t iPoly = 0, iVertex = 0; iPoly < assetFileMesh._polygonCount; ++iPoly)
                     {
                         uint32_t polySize = assetFileMesh._polygonsVertexCount[iPoly];
-                        meshTemplateData.faceVertexCounts.push_back(polySize);
+                        meshTemplateData->faceVertexCounts.push_back(polySize);
                         for (uint32_t iPolyVtx = 0; iPolyVtx < polySize; ++iPolyVtx, ++iVertex)
                         {
                             // do not reverse polygon order
                             int vertexId = assetFileMesh._polygonsVertexIndices[iVertex];
-                            meshTemplateData.faceVertexIndices.push_back(vertexId);
+                            meshTemplateData->faceVertexIndices.push_back(vertexId);
                         }
                     }
 
-                    meshTemplateData.uvSets.resize(assetFileMesh._uvSetCount);
+                    meshTemplateData->defaultNormals.resize(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
+
+                    meshTemplateData->uvSets.resize(assetFileMesh._uvSetCount);
                     for (size_t iUVSet = 0; iUVSet < assetFileMesh._uvSetCount; ++iUVSet)
                     {
-                        VtVec2fArray& uvs = meshTemplateData.uvSets[iUVSet];
-                        uvs.resize(meshTemplateData.faceVertexIndices.size());
+                        VtVec2fArray& uvs = meshTemplateData->uvSets[iUVSet];
+                        uvs.resize(meshTemplateData->faceVertexIndices.size());
 
                         if (assetFileMesh._uvMode == glm::crowdio::GLM_UV_PER_CONTROL_POINT)
                         {
@@ -3960,11 +3967,11 @@ namespace glm
                 {
                     if (!materialName.empty())
                     {
-                        meshTemplateData.materialPath = SdfPathListOp::CreateExplicit({SdfPath(materialName.c_str())});
+                        meshTemplateData->materialPath = SdfPathListOp::CreateExplicit({SdfPath(materialName.c_str())});
                     }
                     else
                     {
-                        meshTemplateData.materialPath = (*_skinMeshRelationships)[_skinMeshRelationshipTokens->materialBinding].defaultTargetPath;
+                        meshTemplateData->materialPath = (*_skinMeshRelationships)[_skinMeshRelationshipTokens->materialBinding].defaultTargetPath;
                     }
                 }
             }
