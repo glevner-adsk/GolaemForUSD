@@ -2150,6 +2150,9 @@ namespace glm
                         }
 
                         // fill skel animation data
+
+                        _skelAnimDataMap[animationSourcePath] = skelEntityData;
+
                         float entityScale = simuData->_scales[entityData->inputGeoData._entityIndex];
                         PODArray<int>& characterSnsIndices = _snsIndicesPerChar[characterIdx];
                         skelEntityData->scalesAnimated = characterSnsIndices.size() > 0 && simuData->_snsCountPerEntityType[entityType] == characterSnsIndices.size();
