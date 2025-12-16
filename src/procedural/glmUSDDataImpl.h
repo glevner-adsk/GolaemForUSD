@@ -211,7 +211,7 @@ namespace glm
             glm::Array<glm::PODArray<int>> _sgToSsPerChar;
             glm::Array<PODArray<int>> _snsIndicesPerChar;
             glm::Array<VtTokenArray> _jointsPerChar;
-            glm::Array<glm::Array<std::map<std::pair<int, int>, SkinMeshTemplateData::SP>>> _skinMeshTemplateDataPerCharPerLod;
+            glm::Array<glm::Array<std::map<std::pair<int, int>, SkinMeshTemplateData::SP>>> _skinMeshTemplateDataPerCharPerGeomFile;
 
             glm::Array<GlmString> _shaderAttrTypes;
             glm::Array<VtValue> _shaderAttrDefaultValues;

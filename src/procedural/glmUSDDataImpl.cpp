@@ -1790,7 +1790,7 @@ namespace glm
 
             if (displayMode == GolaemDisplayMode::SKINMESH)
             {
-                _skinMeshTemplateDataPerCharPerLod.resize(_factory->getGolaemCharacters().size());
+                _skinMeshTemplateDataPerCharPerGeomFile.resize(_factory->getGolaemCharacters().size());
 
                 PODArray<int> meshAssets;
 
@@ -1801,7 +1801,7 @@ namespace glm
                     {
                         continue;
                     }
-                    auto& characterTemplateData = _skinMeshTemplateDataPerCharPerLod[iChar];
+                    auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[iChar];
 
                     glm::crowdio::InputEntityGeoData inputGeoData;
                     inputGeoData._fbxStorage = &getFbxStorage();
@@ -1815,8 +1815,8 @@ namespace glm
                     inputGeoData._character = character;
                     inputGeoData._characterIdx = iChar;
 
-                    size_t lodCount = character->getGeometryAssetsCount(inputGeoData._geometryTag);
-                    characterTemplateData.resize(lodCount);
+                    size_t geoCount = character->getGeometryAssetsCount(inputGeoData._geometryTag);
+                    characterTemplateData.resize(geoCount);
 
                     // add all assets
                     meshAssets.resize(character->_meshAssets.size());
@@ -1826,14 +1826,14 @@ namespace glm
                     }
                     inputGeoData._assets = &meshAssets;
 
-                    for (size_t iLod = 0; iLod < lodCount; ++iLod)
+                    for (size_t iGeo = 0; iGeo < geoCount; ++iGeo)
                     {
-                        inputGeoData._geoFileIndex = static_cast<int32_t>(iLod);
+                        inputGeoData._geoFileIndex = static_cast<int32_t>(iGeo);
                         glm::crowdio::OutputEntityGeoData outputData; // TODO: see if storage is better
                         glm::crowdio::GlmGeometryGenerationStatus geoStatus = glm::crowdio::glmPrepareEntityGeometry(&inputGeoData, &outputData);
                         if (geoStatus == glm::crowdio::GIO_SUCCESS)
                         {
-                            _ComputeSkinMeshTemplateData(characterTemplateData[iLod], inputGeoData, outputData);
+                            _ComputeSkinMeshTemplateData(characterTemplateData[iGeo], inputGeoData, outputData);
                         }
                     }
                 }
@@ -1841,8 +1841,8 @@ namespace glm
             else if (displayMode == GolaemDisplayMode::BOUNDING_BOX)
             {
                 _params.glmLodMode = 0; // no lod in bounding box mode
-                _skinMeshTemplateDataPerCharPerLod.resize(1);
-                auto& characterTemplateData = _skinMeshTemplateDataPerCharPerLod[0];
+                _skinMeshTemplateDataPerCharPerGeomFile.resize(1);
+                auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[0];
                 characterTemplateData.resize(1);
                 auto& lodTemplateData = characterTemplateData[0];
                 SkinMeshTemplateData::SP templateData = new SkinMeshTemplateData();
@@ -2241,7 +2241,7 @@ namespace glm
                     }
                     else if (displayMode == GolaemDisplayMode::SKINMESH)
                     {
-                        auto& characterTemplateData = _skinMeshTemplateDataPerCharPerLod[entityData->inputGeoData._characterIdx];
+                        auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
 
                         glm::PODArray<int> gchaMeshIds;
                         glm::PODArray<int> meshAssetMaterialIndices;
@@ -3215,6 +3215,8 @@ namespace glm
 
             GolaemDisplayMode::Value displayMode = (GolaemDisplayMode::Value)_params.glmDisplayMode;
 
+            auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
+
             if (displayMode == GolaemDisplayMode::BOUNDING_BOX)
             {
                 skinMeshEntityFrameData->meshLodData.resize(1);
@@ -3222,6 +3224,16 @@ namespace glm
                 skinMeshLodData->enabled = true;
                 skinMeshLodData->entityData = entityData;
                 skinMeshEntityFrameData->meshLodData[0] = skinMeshLodData;
+
+                skinMeshLodData->meshData.resize(1);
+
+                SkinMeshData::SP meshData = new SkinMeshData();
+                skinMeshLodData->meshData[0] = meshData;
+
+                auto& lodTemplateData = characterTemplateData[0];
+                meshData->templateData = lodTemplateData[{0, 0}];
+                meshData->points = meshData->templateData->defaultPoints;
+                meshData->normals = meshData->templateData->defaultNormals;
             }
             else if (displayMode == GolaemDisplayMode::SKINMESH)
             {
@@ -3257,8 +3269,6 @@ namespace glm
                     entityData->inputGeoData._cameraWorldPosition = cameraPos;
                 }
 
-                auto& characterTemplateData = _skinMeshTemplateDataPerCharPerLod[entityData->inputGeoData._characterIdx];
-
                 skinMeshEntityFrameData->meshLodData.resize(characterTemplateData.size());
                 for (size_t iLod = 0; iLod < characterTemplateData.size(); ++iLod)
                 {
@@ -3266,15 +3276,6 @@ namespace glm
                     skinMeshLodData->enabled = false;
                     skinMeshLodData->entityData = entityData;
                     skinMeshEntityFrameData->meshLodData[iLod] = skinMeshLodData;
-                    skinMeshLodData->meshData.resize(1);
-
-                    SkinMeshData::SP meshData = new SkinMeshData();
-                    skinMeshLodData->meshData[0] = meshData;
-
-                    auto& lodTemplateData = characterTemplateData[skinMeshEntityFrameData->geometryFileIdx];
-                    meshData->templateData = lodTemplateData[{0, 0}];
-                    meshData->points = meshData->templateData->defaultPoints;
-                    meshData->normals = meshData->templateData->defaultNormals;
                 }
 
                 glm::crowdio::GlmGeometryGenerationStatus geoStatus = glm::crowdio::glmPrepareEntityGeometry(&entityData->inputGeoData, &outputData);
@@ -3600,7 +3601,7 @@ namespace glm
             meshMapData.lodIndex = 0;
             meshMapData.meshIndex = 0;
             meshMapData.entityData = entityData;
-            meshMapData.templateData = _skinMeshTemplateDataPerCharPerLod[0][0][{0, 0}];
+            meshMapData.templateData = _skinMeshTemplateDataPerCharPerGeomFile[0][0][{0, 0}];
 
             // compute the bounding box of the current entity
             GfVec3f halfExtents;
