@@ -209,10 +209,10 @@ namespace glm
             (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryTagId].isAnimated = false;
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryFileId].defaultValue = VtValue(int32_t(-1));
-            (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryFileId].isAnimated = true;
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->geometryFileId].isAnimated = false; // skel entities do not support dynamic lods
 
             (*_skelEntityProperties)[_skelEntityPropertyTokens->lodName].defaultValue = VtValue(TfToken(""));
-            (*_skelEntityProperties)[_skelEntityPropertyTokens->lodName].isAnimated = true;
+            (*_skelEntityProperties)[_skelEntityPropertyTokens->lodName].isAnimated = false; // skel entities do not support dynamic lods
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -1422,14 +1422,6 @@ namespace glm
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(VtVec3fArray({skelEntityFrameData->pos - entityData->extent, skelEntityFrameData->pos + entityData->extent}));
                     }
-                    if (nameToken == _skelEntityPropertyTokens->geometryFileId)
-                    {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->geometryFileIdx);
-                    }
-                    if (nameToken == _skelEntityPropertyTokens->lodName)
-                    {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(skelEntityFrameData->lodName);
-                    }
 
                     return _QueryEntityAttributes(skelEntityFrameData, nameToken, value);
                 }
@@ -1462,8 +1454,8 @@ namespace glm
                 bool isMeshLodPath = false;
                 bool isMeshPath = false;
                 size_t lodIndex = 0;
-                size_t meshIndex = 0;
-                SkinMeshTemplateData::SP skinMeshTemplateData = nullptr;
+                int gchaMeshId = 0;
+                int meshMaterialIndex = 0;
                 if (entityData == nullptr)
                 {
                     const SkinMeshMapData* meshMapData = TfMapLookupPtr(_skinMeshDataMap, primPath);
@@ -1471,7 +1463,8 @@ namespace glm
                     {
                         entityData = meshMapData->entityData;
                         lodIndex = meshMapData->lodIndex;
-                        meshIndex = meshMapData->meshIndex;
+                        gchaMeshId = meshMapData->gchaMeshId;
+                        meshMaterialIndex = meshMapData->meshMaterialIndex;
                         isMeshPath = true;
                     }
                     else
@@ -1530,16 +1523,37 @@ namespace glm
                 }
                 else if (isMeshPath)
                 {
-                    SkinMeshLodData::SP meshLodData = entityFrameData->meshLodData[lodIndex];
-                    SkinMeshData::SP meshData = meshLodData->meshData[meshIndex];
                     // this is a mesh node
-                    if (nameToken == _skinMeshPropertyTokens->points)
+                    SkinMeshLodData::SP meshLodData = entityFrameData->meshLodData[lodIndex];
+                    if (meshLodData->enabled)
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->points);
+                        SkinMeshData::SP meshData = meshLodData->meshData.at({gchaMeshId, meshMaterialIndex});
+                        if (meshData != NULL)
+                        {
+                            if (nameToken == _skinMeshPropertyTokens->points)
+                            {
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->points);
+                            }
+                            if (nameToken == _skinMeshPropertyTokens->normals)
+                            {
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->normals);
+                            }
+                        }
                     }
-                    if (nameToken == _skinMeshPropertyTokens->normals)
+                    else
                     {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->normals);
+                        // this is a mesh from an inactive lod, use the mesh template data
+                        auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
+                        const auto& lodTemplateData = characterTemplateData[lodIndex];
+                        SkinMeshTemplateData::SP meshTemplateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
+                        if (nameToken == _skinMeshPropertyTokens->points)
+                        {
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultPoints);
+                        }
+                        if (nameToken == _skinMeshPropertyTokens->normals)
+                        {
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultNormals);
+                        }
                     }
                 }
             }
@@ -2114,6 +2128,7 @@ namespace glm
 
                     uint16_t boneCount = simuData->_boneCount[entityType];
                     entityData->bonePositionOffset = simuData->_iBoneOffsetPerEntityType[entityType] + simuData->_indexInEntityType[entityData->inputGeoData._entityIndex] * boneCount;
+
                     if (displayMode == GolaemDisplayMode::SKELETON)
                     {
                         if (characterIdx < usdCharacterFilesList.sizeInt())
@@ -2153,7 +2168,6 @@ namespace glm
 
                         _skelAnimDataMap[animationSourcePath] = skelEntityData;
 
-                        float entityScale = simuData->_scales[entityData->inputGeoData._entityIndex];
                         PODArray<int>& characterSnsIndices = _snsIndicesPerChar[characterIdx];
                         skelEntityData->scalesAnimated = characterSnsIndices.size() > 0 && simuData->_snsCountPerEntityType[entityType] == characterSnsIndices.size();
                         if (skelEntityData->scalesAnimated)
@@ -2171,69 +2185,6 @@ namespace glm
                             std::string meshName = TfMakeValidIdentifier(entityMeshNames[iMesh].c_str());
                             skelEntityData->geoVariants[meshName] = meshVariantEnable.c_str();
                         }
-
-                        entityData->defaultGeometryFileIdx = 0;
-
-                        PODArray<float> overrideMinLodDistances;
-                        PODArray<float> overrideMaxLodDistances;
-                        float distanceToCamera = -1.f;
-
-                        uint32_t geoDataIndex = entityData->inputGeoData._simuData->_iGeoBehaviorOffsetPerEntityType[entityType] + entityData->inputGeoData._simuData->_indexInEntityType[entityData->inputGeoData._entityIndex];
-                        bool geoFileIdxSet = false;
-                        if (entityData->inputGeoData._frameDatas[0] != NULL)
-                        {
-                            uint16_t cacheGeoIdx = entityData->inputGeoData._frameDatas[0]->_geoBehaviorGeometryIds[geoDataIndex];
-                            if (cacheGeoIdx != UINT16_MAX)
-                            {
-                                entityData->defaultGeometryFileIdx = cacheGeoIdx;
-                                geoFileIdxSet = true;
-                            }
-                        }
-                        if (!geoFileIdxSet)
-                        {
-                            if (_params.glmLodMode > 0)
-                            {
-                                float* rootPos = entityData->inputGeoData._frameDatas[0]->_bonePositions[entityData->bonePositionOffset];
-                                Vector3 entityPos(rootPos);
-                                Vector3 cameraPos;
-
-                                // update LOD data
-                                if (_params.glmLodMode == 1)
-                                {
-                                    // in static lod mode get the camera pos directly from the params
-                                    cameraPos.setValues(_params.glmCameraPos.data());
-                                }
-                                else if (_params.glmLodMode == 2)
-                                {
-                                    // in dynamic lod mode get the camera pos from the node attributes (it may be connected to another attribute - usdWrapper will do the update)
-                                    const VtValue* cameraPosValue = TfMapLookupPtr(_usdParams, _golaemTokens->glmCameraPos);
-                                    if (cameraPosValue != NULL)
-                                    {
-                                        if (cameraPosValue->IsHolding<GfVec3f>())
-                                        {
-                                            const GfVec3f& usdValue = cameraPosValue->UncheckedGet<GfVec3f>();
-                                            cameraPos.setValues(usdValue.data());
-                                        }
-                                    }
-                                }
-
-                                distanceToCamera = crowdio::computeDistanceToCamera(cameraPos, entityPos, *character, entityScale, entityData->inputGeoData._geometryTag);
-                                crowdio::getLodOverridesFromCache(overrideMinLodDistances, overrideMaxLodDistances, &entityData->inputGeoData);
-                            }
-                        }
-
-                        const GeometryAsset* geometryAsset = character->getGeometryAsset(entityData->inputGeoData._geometryTag, entityData->defaultGeometryFileIdx, distanceToCamera, &overrideMinLodDistances, &overrideMaxLodDistances);
-                        if (geometryAsset)
-                        {
-                            GlmString lodLevelString;
-                            getStringFromLODLevel(static_cast<LODLevelFlags::Value>(geometryAsset->_lodLevel), lodLevelString);
-                            entityData->defaultLodName = TfToken(lodLevelString.c_str());
-                        }
-
-                        // set the lod variant
-                        lodVariantName = "lod";
-                        lodVariantName += glm::toString(entityData->defaultGeometryFileIdx);
-                        skelEntityData->geoVariants[lodVariantSetName.c_str()] = lodVariantName.c_str();
                     }
                     else if (displayMode == GolaemDisplayMode::BOUNDING_BOX)
                     {
@@ -2279,12 +2230,13 @@ namespace glm
                             }
                             const auto& lodTemplateData = characterTemplateData[geometryFileIdx];
 
-                            skinMeshEntityData->lodEnabled.assign(1, 1);
+                            skinMeshEntityData->lodEnabled.resize(1, 1);
 
                             _InitSkinMeshData(entityData->entityPath, skinMeshEntityData, 0, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
                         }
                         else
                         {
+                            skinMeshEntityData->lodEnabled.resize(characterTemplateData.size(), 0);
                             for (size_t iLod = 0, lodCount = characterTemplateData.size(); iLod < lodCount; ++iLod)
                             {
                                 lodVariantName = "lod";
@@ -2303,6 +2255,82 @@ namespace glm
                         }
                     }
 
+                    float entityScale = simuData->_scales[entityData->inputGeoData._entityIndex];
+
+                    entityData->defaultGeometryFileIdx = 0;
+
+                    PODArray<float> overrideMinLodDistances;
+                    PODArray<float> overrideMaxLodDistances;
+                    float distanceToCamera = -1.f;
+
+                    uint32_t geoDataIndex = entityData->inputGeoData._simuData->_iGeoBehaviorOffsetPerEntityType[entityType] + entityData->inputGeoData._simuData->_indexInEntityType[entityData->inputGeoData._entityIndex];
+                    bool geoFileIdxSet = false;
+                    if (entityData->inputGeoData._frameDatas[0] != NULL)
+                    {
+                        uint16_t cacheGeoIdx = entityData->inputGeoData._frameDatas[0]->_geoBehaviorGeometryIds[geoDataIndex];
+                        if (cacheGeoIdx != UINT16_MAX)
+                        {
+                            entityData->defaultGeometryFileIdx = cacheGeoIdx;
+                            geoFileIdxSet = true;
+                        }
+                    }
+                    if (!geoFileIdxSet)
+                    {
+                        if (_params.glmLodMode > 0)
+                        {
+                            float* rootPos = entityData->inputGeoData._frameDatas[0]->_bonePositions[entityData->bonePositionOffset];
+                            Vector3 entityPos(rootPos);
+                            Vector3 cameraPos;
+
+                            // update LOD data
+                            if (_params.glmLodMode == 1)
+                            {
+                                // in static lod mode get the camera pos directly from the params
+                                cameraPos.setValues(_params.glmCameraPos.data());
+                            }
+                            else if (_params.glmLodMode == 2)
+                            {
+                                // in dynamic lod mode get the camera pos from the node attributes (it may be connected to another attribute - usdWrapper will do the update)
+                                const VtValue* cameraPosValue = TfMapLookupPtr(_usdParams, _golaemTokens->glmCameraPos);
+                                if (cameraPosValue != NULL)
+                                {
+                                    if (cameraPosValue->IsHolding<GfVec3f>())
+                                    {
+                                        const GfVec3f& usdValue = cameraPosValue->UncheckedGet<GfVec3f>();
+                                        cameraPos.setValues(usdValue.data());
+                                    }
+                                }
+                            }
+
+                            distanceToCamera = crowdio::computeDistanceToCamera(cameraPos, entityPos, *character, entityScale, entityData->inputGeoData._geometryTag);
+                            crowdio::getLodOverridesFromCache(overrideMinLodDistances, overrideMaxLodDistances, &entityData->inputGeoData);
+                        }
+                    }
+
+                    const GeometryAsset* geometryAsset = character->getGeometryAsset(entityData->inputGeoData._geometryTag, entityData->defaultGeometryFileIdx, distanceToCamera, &overrideMinLodDistances, &overrideMaxLodDistances);
+                    if (geometryAsset)
+                    {
+                        GlmString lodLevelString;
+                        getStringFromLODLevel(static_cast<LODLevelFlags::Value>(geometryAsset->_lodLevel), lodLevelString);
+                        entityData->defaultLodName = TfToken(lodLevelString.c_str());
+                    }
+
+                    if (displayMode == GolaemDisplayMode::SKINMESH)
+                    {
+                        skinMeshEntityData->lodEnabled[entityData->defaultGeometryFileIdx] = 1;
+                        if (_params.glmLodMode == 1)
+                        {
+                            entityData->inputGeoData._enableLOD = 0; // disable LOD switching at frame time
+                            entityData->inputGeoData._geoFileIndex = static_cast<int32_t>(entityData->defaultGeometryFileIdx);
+                        }
+                    }
+                    else if (displayMode == GolaemDisplayMode::SKELETON)
+                    {
+                        // set the lod variant
+                        lodVariantName = "lod";
+                        lodVariantName += glm::toString(entityData->defaultGeometryFileIdx);
+                        skelEntityData->geoVariants[lodVariantSetName.c_str()] = lodVariantName.c_str();
+                    }
                     _getCharacterExtent(entityData, entityData->extent);
                 }
             }
@@ -2341,7 +2369,8 @@ namespace glm
                 meshMapData.lodIndex = lodIndex;
                 meshMapData.entityData = entityData;
                 meshMapData.templateData = meshTemplateData;
-                meshMapData.meshIndex = iMesh;
+                meshMapData.gchaMeshId = gchaMeshIds[iMesh];
+                meshMapData.meshMaterialIndex = meshAssetMaterialIndices[iMesh];
             }
         }
 
@@ -2480,6 +2509,14 @@ namespace glm
                             else if (nameToken == _skelEntityPropertyTokens->geometryTagId)
                             {
                                 *value = VtValue(int32_t((*entityDataPtr)->inputGeoData._geometryTag));
+                            }
+                            else if (nameToken == _skelEntityPropertyTokens->geometryFileId)
+                            {
+                                *value = VtValue(int32_t((*entityDataPtr)->defaultGeometryFileIdx));
+                            }
+                            else if (nameToken == _skelEntityPropertyTokens->lodName)
+                            {
+                                *value = VtValue((*entityDataPtr)->defaultLodName);
                             }
                             else
                             {
@@ -3225,13 +3262,11 @@ namespace glm
                 skinMeshLodData->entityData = entityData;
                 skinMeshEntityFrameData->meshLodData[0] = skinMeshLodData;
 
-                skinMeshLodData->meshData.resize(1);
-
                 SkinMeshData::SP meshData = new SkinMeshData();
-                skinMeshLodData->meshData[0] = meshData;
+                skinMeshLodData->meshData[{0, 0}] = meshData;
 
                 auto& lodTemplateData = characterTemplateData[0];
-                meshData->templateData = lodTemplateData[{0, 0}];
+                meshData->templateData = lodTemplateData.at({0, 0});
                 meshData->points = meshData->templateData->defaultPoints;
                 meshData->normals = meshData->templateData->defaultNormals;
             }
@@ -3297,15 +3332,6 @@ namespace glm
 
                     // update lod visibility
                     lodData->enabled = true;
-
-                    size_t meshCount = outputData._meshAssetNameIndices.size();
-                    lodData->meshData.resize(meshCount);
-                    for (size_t iRenderMesh = 0; iRenderMesh < meshCount; ++iRenderMesh)
-                    {
-                        SkinMeshData::SP meshData = new SkinMeshData();
-                        lodData->meshData[iRenderMesh] = meshData;
-                    }
-
                     glm::Array<glm::Array<glm::Vector3>>& frameDeformedVertices = outputData._deformedVertices[0];
                     glm::Array<glm::Array<glm::Vector3>>& frameDeformedNormals = outputData._deformedNormals[0];
 
@@ -3334,7 +3360,7 @@ namespace glm
                             fbxTime = 0;
                         }
 
-                        for (size_t iRenderMesh = 0; iRenderMesh < meshCount; ++iRenderMesh)
+                        for (size_t iRenderMesh = 0, meshCount = outputData._meshAssetNameIndices.size(); iRenderMesh < meshCount; ++iRenderMesh)
                         {
                             size_t iGeoFileMesh = outputData._meshAssetNameIndices[iRenderMesh];
 
@@ -3377,11 +3403,12 @@ namespace glm
                             vertexMasks.assign(fbxVertexCount, -1);
                             polygonMasks.assign(fbxPolyCount, 0);
 
-                            int meshAssetIndex = outputData._gchaMeshIds[iRenderMesh];
-                            int meshMtlIdx = outputData._meshAssetMaterialIndices[iRenderMesh];
+                            int gchaMeshId = outputData._gchaMeshIds[iRenderMesh];
+                            int meshMaterialIndex = outputData._meshAssetMaterialIndices[iRenderMesh];
 
-                            SkinMeshData::SP meshData = lodData->meshData[iRenderMesh];
-                            meshData->templateData = lodTemplateData[{meshAssetIndex, meshMtlIdx}];
+                            SkinMeshData::SP meshData = new SkinMeshData();
+                            lodData->meshData[{gchaMeshId, meshMaterialIndex}] = meshData;
+                            meshData->templateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
 
                             meshData->points.resize(meshData->templateData->defaultPoints.size());
                             meshData->normals.resize(meshData->templateData->defaultNormals.size());
@@ -3394,7 +3421,7 @@ namespace glm
                                 {
                                     currentMtlIdx = materialElement->GetIndexArray().GetAt(iFbxPoly);
                                 }
-                                if (currentMtlIdx == meshMtlIdx)
+                                if (currentMtlIdx == meshMaterialIndex)
                                 {
                                     polygonMasks[iFbxPoly] = 1;
                                     for (int iPolyVertex = 0, polyVertexCount = fbxMesh->GetPolygonSize(iFbxPoly); iPolyVertex < polyVertexCount; ++iPolyVertex)
@@ -3494,7 +3521,7 @@ namespace glm
                     else if (outputData._geoType == glm::crowdio::GeometryType::GCG)
                     {
                         crowdio::CrowdGcgCharacter* gcgCharacter = outputData._gcgCharacters[0];
-                        for (size_t iRenderMesh = 0; iRenderMesh < meshCount; ++iRenderMesh)
+                        for (size_t iRenderMesh = 0, meshCount = outputData._meshAssetNameIndices.size(); iRenderMesh < meshCount; ++iRenderMesh)
                         {
                             const glm::Array<glm::Vector3>& meshDeformedVertices = frameDeformedVertices[iRenderMesh];
                             size_t vertexCount = meshDeformedVertices.size();
@@ -3503,11 +3530,12 @@ namespace glm
                                 continue;
                             }
 
-                            int meshAssetIndex = outputData._gchaMeshIds[iRenderMesh];
-                            int meshMtlIdx = outputData._meshAssetMaterialIndices[iRenderMesh];
+                            int gchaMeshId = outputData._gchaMeshIds[iRenderMesh];
+                            int meshMaterialIndex = outputData._meshAssetMaterialIndices[iRenderMesh];
 
-                            SkinMeshData::SP meshData = lodData->meshData[iRenderMesh];
-                            meshData->templateData = lodTemplateData[{meshAssetIndex, meshMtlIdx}];
+                            SkinMeshData::SP meshData = new SkinMeshData();
+                            lodData->meshData[{gchaMeshId, meshMaterialIndex}] = meshData;
+                            meshData->templateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
 
                             meshData->points.resize(meshData->templateData->defaultPoints.size());
                             meshData->normals.resize(meshData->templateData->defaultNormals.size());
@@ -3599,9 +3627,10 @@ namespace glm
 
             SkinMeshMapData& meshMapData = _skinMeshDataMap[lastMeshTransformPath];
             meshMapData.lodIndex = 0;
-            meshMapData.meshIndex = 0;
+            meshMapData.gchaMeshId = 0;
+            meshMapData.meshMaterialIndex = 0;
             meshMapData.entityData = entityData;
-            meshMapData.templateData = _skinMeshTemplateDataPerCharPerGeomFile[0][0][{0, 0}];
+            meshMapData.templateData = _skinMeshTemplateDataPerCharPerGeomFile[0][0].at({0, 0});
 
             // compute the bounding box of the current entity
             GfVec3f halfExtents;
@@ -3708,11 +3737,11 @@ namespace glm
             {
                 meshName = outputData._meshAssetNames[outputData._meshAssetNameIndices[iRenderMesh]];
                 meshAlias = outputData._meshAssetAliases[outputData._meshAssetNameIndices[iRenderMesh]];
-                int meshAssetIndex = outputData._gchaMeshIds[iRenderMesh];
-                int materialIdx = outputData._meshAssetMaterialIndices[iRenderMesh];
-                if (materialIdx != 0)
+                int gchaMeshId = outputData._gchaMeshIds[iRenderMesh];
+                int meshMaterialIndex = outputData._meshAssetMaterialIndices[iRenderMesh];
+                if (meshMaterialIndex != 0)
                 {
-                    materialSuffix = glm::toString(materialIdx);
+                    materialSuffix = glm::toString(meshMaterialIndex);
                     meshName += materialSuffix;
                     meshAlias += materialSuffix;
                 }
@@ -3725,7 +3754,7 @@ namespace glm
                 }
 
                 SkinMeshTemplateData::SP meshTemplateData = new SkinMeshTemplateData();
-                lodTemplateData[{meshAssetIndex, materialIdx}] = meshTemplateData;
+                lodTemplateData[{gchaMeshId, meshMaterialIndex}] = meshTemplateData;
                 meshTemplateData->meshAlias = meshAlias;
 
                 if (outputData._geoType == glm::crowdio::GeometryType::FBX)

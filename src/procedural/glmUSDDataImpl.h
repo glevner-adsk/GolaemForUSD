@@ -130,7 +130,7 @@ namespace glm
             {
                 typedef SmartPointer<SkinMeshLodData> SP;
 
-                glm::Array<SkinMeshData::SP> meshData;
+                std::map<std::pair<int, int>, SkinMeshData::SP> meshData;
                 EntityData::SP entityData = NULL;
                 bool enabled = false;
             };
@@ -183,7 +183,8 @@ namespace glm
             {
                 SkinMeshEntityData::SP entityData;
                 size_t lodIndex;
-                size_t meshIndex;
+                int gchaMeshId;
+                int meshMaterialIndex;
                 SkinMeshTemplateData::SP templateData;
             };
 
