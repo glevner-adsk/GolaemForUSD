@@ -1310,68 +1310,71 @@ namespace glm
         //-----------------------------------------------------------------------------
         bool GolaemUSD_DataImpl::_QueryEntityAttributes(EntityFrameData::SP entityFrameData, const TfToken& nameToken, VtValue* value)
         {
-            if (const size_t* ppAttrIdx = TfMapLookupPtr(entityFrameData->entityData->ppAttrIndexes, nameToken))
+            if (entityFrameData->enabled)
             {
-                if (value)
+                if (const size_t* ppAttrIdx = TfMapLookupPtr(entityFrameData->entityData->ppAttrIndexes, nameToken))
                 {
-                    if (*ppAttrIdx < entityFrameData->floatPPAttrValues.size())
+                    if (value)
                     {
-                        // this is a float PP attribute
-                        size_t floatAttrIdx = *ppAttrIdx;
-                        *value = VtValue(entityFrameData->floatPPAttrValues[floatAttrIdx]);
-                    }
-                    else
-                    {
-                        // this is a vector PP attribute
-                        size_t vectAttrIdx = *ppAttrIdx - entityFrameData->floatPPAttrValues.size();
-                        *value = VtValue(entityFrameData->vectorPPAttrValues[vectAttrIdx]);
-                    }
-                }
-                return true;
-            }
-            if (const size_t* shaderAttrIdx = TfMapLookupPtr(entityFrameData->entityData->shaderAttrIndexes, nameToken))
-            {
-                if (value)
-                {
-                    const glm::ShaderAttribute& shaderAttr = entityFrameData->entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
-                    size_t specificAttrIdx = _globalToSpecificShaderAttrIdxPerCharPerCrowdField[entityFrameData->entityData->cfIdx][entityFrameData->entityData->inputGeoData._characterIdx][*shaderAttrIdx];
-                    switch (shaderAttr._type)
-                    {
-                    case glm::ShaderAttributeType::INT:
-                    {
-                        glm::GlmString attrName, subAttrName;
-                        glm::crowdio::RendererAttributeType::Value overrideType(glm::crowdio::RendererAttributeType::END);
-                        glm::crowdio::parseRendererAttribute("arnold", shaderAttr._name, attrName, subAttrName, overrideType);
-                        if (overrideType == glm::crowdio::RendererAttributeType::BOOL)
+                        if (*ppAttrIdx < entityFrameData->floatPPAttrValues.size())
                         {
-                            *value = VtValue(entityFrameData->intShaderAttrValues[specificAttrIdx] != 0);
+                            // this is a float PP attribute
+                            size_t floatAttrIdx = *ppAttrIdx;
+                            *value = VtValue(entityFrameData->floatPPAttrValues[floatAttrIdx]);
                         }
                         else
                         {
-                            *value = VtValue(entityFrameData->intShaderAttrValues[specificAttrIdx]);
+                            // this is a vector PP attribute
+                            size_t vectAttrIdx = *ppAttrIdx - entityFrameData->floatPPAttrValues.size();
+                            *value = VtValue(entityFrameData->vectorPPAttrValues[vectAttrIdx]);
                         }
                     }
-                    break;
-                    case glm::ShaderAttributeType::FLOAT:
-                    {
-                        *value = VtValue(entityFrameData->floatShaderAttrValues[specificAttrIdx]);
-                    }
-                    break;
-                    case glm::ShaderAttributeType::STRING:
-                    {
-                        *value = VtValue(entityFrameData->stringShaderAttrValues[specificAttrIdx]);
-                    }
-                    break;
-                    case glm::ShaderAttributeType::VECTOR:
-                    {
-                        *value = VtValue(entityFrameData->vectorShaderAttrValues[specificAttrIdx]);
-                    }
-                    break;
-                    default:
-                        break;
-                    }
+                    return true;
                 }
-                return true;
+                if (const size_t* shaderAttrIdx = TfMapLookupPtr(entityFrameData->entityData->shaderAttrIndexes, nameToken))
+                {
+                    if (value)
+                    {
+                        const glm::ShaderAttribute& shaderAttr = entityFrameData->entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
+                        size_t specificAttrIdx = _globalToSpecificShaderAttrIdxPerCharPerCrowdField[entityFrameData->entityData->cfIdx][entityFrameData->entityData->inputGeoData._characterIdx][*shaderAttrIdx];
+                        switch (shaderAttr._type)
+                        {
+                        case glm::ShaderAttributeType::INT:
+                        {
+                            glm::GlmString attrName, subAttrName;
+                            glm::crowdio::RendererAttributeType::Value overrideType(glm::crowdio::RendererAttributeType::END);
+                            glm::crowdio::parseRendererAttribute("arnold", shaderAttr._name, attrName, subAttrName, overrideType);
+                            if (overrideType == glm::crowdio::RendererAttributeType::BOOL)
+                            {
+                                *value = VtValue(entityFrameData->intShaderAttrValues[specificAttrIdx] != 0);
+                            }
+                            else
+                            {
+                                *value = VtValue(entityFrameData->intShaderAttrValues[specificAttrIdx]);
+                            }
+                        }
+                        break;
+                        case glm::ShaderAttributeType::FLOAT:
+                        {
+                            *value = VtValue(entityFrameData->floatShaderAttrValues[specificAttrIdx]);
+                        }
+                        break;
+                        case glm::ShaderAttributeType::STRING:
+                        {
+                            *value = VtValue(entityFrameData->stringShaderAttrValues[specificAttrIdx]);
+                        }
+                        break;
+                        case glm::ShaderAttributeType::VECTOR:
+                        {
+                            *value = VtValue(entityFrameData->vectorShaderAttrValues[specificAttrIdx]);
+                        }
+                        break;
+                        default:
+                            break;
+                        }
+                    }
+                    return true;
+                }
             }
             return false;
         }
@@ -1524,25 +1527,40 @@ namespace glm
                 else if (isMeshPath)
                 {
                     // this is a mesh node
-                    SkinMeshLodData::SP meshLodData = entityFrameData->meshLodData[lodIndex];
-                    if (meshLodData->enabled)
+
+                    bool useTemplateData = false;
+                    if (!entityFrameData->enabled)
                     {
-                        SkinMeshData::SP meshData = meshLodData->meshData.at({gchaMeshId, meshMaterialIndex});
-                        if (meshData != NULL)
-                        {
-                            if (nameToken == _skinMeshPropertyTokens->points)
-                            {
-                                RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->points);
-                            }
-                            if (nameToken == _skinMeshPropertyTokens->normals)
-                            {
-                                RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->normals);
-                            }
-                        }
+                        // entity is disabled, use the mesh template data
+                        useTemplateData = true;
                     }
                     else
                     {
-                        // this is a mesh from an inactive lod, use the mesh template data
+                        SkinMeshLodData::SP meshLodData = entityFrameData->meshLodData[lodIndex];
+                        if (!meshLodData->enabled)
+                        {
+                            // this is a mesh from an inactive lod, use the mesh template data
+                            useTemplateData = true;
+                        }
+                        else
+                        {
+                            SkinMeshData::SP meshData = meshLodData->meshData.at({gchaMeshId, meshMaterialIndex});
+                            if (meshData != NULL)
+                            {
+                                if (nameToken == _skinMeshPropertyTokens->points)
+                                {
+                                    RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->points);
+                                }
+                                if (nameToken == _skinMeshPropertyTokens->normals)
+                                {
+                                    RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->normals);
+                                }
+                            }
+                        }
+                    }
+
+                    if (useTemplateData)
+                    {
                         auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
                         const auto& lodTemplateData = characterTemplateData[lodIndex];
                         SkinMeshTemplateData::SP meshTemplateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
