@@ -52,8 +52,8 @@ namespace glm
     xx(TfToken, glmAttributeNamespace, "")          \
     xx(short, glmLodMode, 0)                        \
     xx(GfVec3f, glmCameraPos, 0)                    \
-    xx(TfToken, glmProceduralFile, "")              \
-    xx(int, glmCachedFramesCount, 3)
+    xx(int, glmCachedFramesCount, 3)                \
+    xx(TfToken, glmProceduralFile, "")
         // clang-format on
 
         // A token of the same name must be defined for each parameter in the macro
@@ -81,8 +81,8 @@ namespace glm
     (glmAttributeNamespace)             \
     (glmLodMode)                        \
     (glmCameraPos)                      \
-    (glmProceduralFile)                 \
-    (glmCachedFramesCount)
+    (glmCachedFramesCount)              \
+    (glmProceduralFile)
         // clang-format on
 
 #ifdef _MSC_VER

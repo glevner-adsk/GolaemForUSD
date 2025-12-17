@@ -72,14 +72,13 @@ namespace glm
             {
                 typedef SmartPointer<EntityData> SP;
 
-                size_t cfIdx = 0; // index of the crowd field this entity belongs to
-
                 std::map<TfToken, size_t, TfTokenFastArbitraryLessThan> ppAttrIndexes;
                 std::map<TfToken, size_t, TfTokenFastArbitraryLessThan> shaderAttrIndexes;
 
                 SdfPath entityPath;
 
                 bool excluded = false; // excluded by layout - the entity will always be empty
+                size_t cfIdx = 0;      // index of the crowd field this entity belongs to
                 uint32_t bonePositionOffset = 0;
                 glm::Mutex* cachedSimulationLock = NULL;
                 glm::Mutex* entityComputeLock = NULL; // do not allow simultaneous computes of the same entity
@@ -323,7 +322,6 @@ namespace glm
             SdfPath _CreateHierarchyFor(const glm::GlmString& hierarchy, const SdfPath& parentPath, GlmMap<GlmString, SdfPath>& existingPaths);
             SkelEntityFrameData::SP _ComputeSkelEntity(EntityData::SP entityData, double frame);
             SkinMeshEntityFrameData::SP _ComputeSkinMeshEntity(EntityData::SP entityData, double frame);
-            void _DoComputeSkinMeshEntity(SkinMeshEntityData* entityData);
             void _ComputeEntity(EntityFrameData::SP entityFrameData, double frame);
             void _InvalidateEntity(EntityFrameData::SP entityFrameData);
             void _getCharacterExtent(EntityData::SP entityData, GfVec3f& extent) const;

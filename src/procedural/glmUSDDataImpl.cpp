@@ -2733,7 +2733,7 @@ namespace glm
                     {
                         if (value)
                         {
-                            SkelEntityData* skelEntityData = static_cast<SkelEntityData*>((*entityDataPtr).getImpl());
+                            SkelEntityData* skelEntityData = static_cast<SkelEntityData*>(entityDataPtr->getImpl());
                             if (nameToken == _skelEntityRelationshipTokens->animationSource)
                             {
                                 *value = VtValue(skelEntityData->animationSourcePath);
@@ -3006,12 +3006,6 @@ namespace glm
             // getFrameData returned a new SkelEntityFrameData, set entityData to mark it as computed
             skelEntiyFrameData->entityData = entityData;
 
-            _ComputeEntity(skelEntiyFrameData, frame);
-            if (!skelEntiyFrameData->enabled)
-            {
-                return skelEntiyFrameData;
-            }
-
 #ifdef TRACY_ENABLE
             ZoneScopedNC("ComputeSkelEntity", GLM_COLOR_CACHE);
             glm::GlmString entityIdStr = "EntityId=" + glm::toString(entityData->inputGeoData._entityId);
@@ -3019,6 +3013,11 @@ namespace glm
             glm::GlmString frameStr = "Frame=" + glm::toString(frame);
             ZoneText(frameStr.c_str(), frameStr.size());
 #endif
+            _ComputeEntity(skelEntiyFrameData, frame);
+            if (!skelEntiyFrameData->enabled)
+            {
+                return skelEntiyFrameData;
+            }
 
             SkelEntityData* skelEntityData = static_cast<SkelEntityData*>(entityData.getImpl());
 
@@ -3237,12 +3236,6 @@ namespace glm
             // getFrameData returned a new SkinMeshEntityFrameData, set entityData to mark it as computed
             skinMeshEntityFrameData->entityData = entityData;
 
-            _ComputeEntity(skinMeshEntityFrameData, frame);
-            if (!skinMeshEntityFrameData->enabled)
-            {
-                return skinMeshEntityFrameData;
-            }
-
 #ifdef TRACY_ENABLE
             ZoneScopedNC("ComputeSkinMeshEntity", GLM_COLOR_CACHE);
             glm::GlmString entityIdStr = "EntityId=" + glm::toString(entityData->inputGeoData._entityId);
@@ -3251,7 +3244,11 @@ namespace glm
             ZoneText(frameStr.c_str(), frameStr.size());
 #endif
 
-            // update entity position
+            _ComputeEntity(skinMeshEntityFrameData, frame);
+            if (!skinMeshEntityFrameData->enabled)
+            {
+                return skinMeshEntityFrameData;
+            }
 
             const glm::crowdio::GlmFrameData* frameData = entityData->inputGeoData._frameDatas[0];
 
@@ -3845,7 +3842,7 @@ namespace glm
                     meshTemplateData->defaultNormals.resize(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
 
                     // find how many uv layers are available
-                    int uvSetCount = fbxMesh->GetLayerCount(::FbxLayerElement::eUV);
+                    int uvSetCount = fbxMesh->GetLayerCount(FbxLayerElement::eUV);
                     meshTemplateData->uvSets.resize(uvSetCount);
                     FbxLayerElementUV* uvElement = NULL;
                     for (int iUVSet = 0; iUVSet < uvSetCount; ++iUVSet)
