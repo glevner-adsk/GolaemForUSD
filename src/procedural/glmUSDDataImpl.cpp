@@ -195,7 +195,6 @@ namespace glm
         {
 
             // Define the default value types for our animated properties.
-
             (*_skelEntityProperties)[_skelEntityPropertyTokens->visibility].defaultValue = VtValue(UsdGeomTokens->inherited);
             (*_skelEntityProperties)[_skelEntityPropertyTokens->visibility].isAnimated = true;
 
@@ -2512,11 +2511,7 @@ namespace glm
                     {
                         if (value)
                         {
-                            if (nameToken == _skelEntityPropertyTokens->visibility)
-                            {
-                                *value = VtValue(UsdGeomTokens->inherited);
-                            }
-                            else if (nameToken == _skelEntityPropertyTokens->entityId)
+                            if (nameToken == _skelEntityPropertyTokens->entityId)
                             {
                                 *value = VtValue((*entityDataPtr)->inputGeoData._entityId);
                             }
@@ -2604,15 +2599,7 @@ namespace glm
                         {
                             // Special case for translate property. Each leaf prim has its own
                             // default position.
-                            if (nameToken == _skinMeshEntityPropertyTokens->xformOpTranslate)
-                            {
-                                *value = VtValue(GfVec3f(0.0f, 0.0f, 0.0f));
-                            }
-                            else if (nameToken == _skinMeshEntityPropertyTokens->visibility)
-                            {
-                                *value = VtValue(UsdGeomTokens->inherited);
-                            }
-                            else if (nameToken == _skinMeshEntityPropertyTokens->entityId)
+                            if (nameToken == _skinMeshEntityPropertyTokens->entityId)
                             {
                                 *value = VtValue((*entityDataPtr)->inputGeoData._entityId);
                             }
