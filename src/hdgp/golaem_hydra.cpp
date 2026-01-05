@@ -5,8 +5,6 @@
  * - UVs
  * - LODs
  * - motion blur
- * - optimization: cache and reuse FileMeshAdapter instances (only
- *   points and normals change for the same LOD)
  */
 #include "pxr/imaging/hdGp/generativeProceduralPlugin.h"
 #include "pxr/imaging/hdGp/generativeProceduralPluginRegistry.h"
@@ -55,6 +53,14 @@ using glm::crowdio::GlmGeometryFile;
 using glm::crowdio::GlmNormalMode;
 using glm::crowdio::GlmSimulationData;
 using glm::crowdio::SimulationCacheFactory;
+
+/*
+ * If defined, maintain a cache of FileMeshAdapter instances, so that
+ * we can update their deformed vertices and normals at each frame
+ * rather than recreating them from scratch. This doesn't seem to be
+ * particularly effective, though.
+ */
+//#define CACHE_FILE_MESH_ADAPTERS
 
 namespace
 {
@@ -263,7 +269,7 @@ struct MeshEntityData
 {
     int crowdFieldIndex;
     int entityIndex;
-    std::vector<FileMeshAdapter> meshes;
+    std::vector<std::shared_ptr<FileMeshAdapter>> meshes;
 };
 
 /*
@@ -527,13 +533,13 @@ public:
             int entityIndex = it->second.first;
             int meshIndex = it->second.second;
             result.primType = HdPrimTypeTokens->mesh;
-            const FileMeshAdapter& adapter =
+            const std::shared_ptr<FileMeshAdapter>& adapter =
                 _meshEntities[entityIndex].meshes[meshIndex];
             result.dataSource = HdRetainedContainerDataSource::New(
                 HdMeshSchemaTokens->mesh,
-                adapter.GetMeshDataSource(),
+                adapter->GetMeshDataSource(),
                 HdPrimvarsSchemaTokens->primvars,
-                adapter.GetPrimvarsDataSource());
+                adapter->GetPrimvarsDataSource());
         }
 
         return result;
@@ -544,9 +550,9 @@ private:
     Args GetArgs(const HdSceneIndexBaseRefPtr& inputScene);
     void InitCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
-    std::vector<FileMeshAdapter> GenerateMeshes(
+    std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
-        int entityIndex);
+        int crowdFieldIndex, int entityIndex);
 
     using _ChildIndexMap = std::unordered_map<SdfPath, int, TfHash>;
     using _ChildIndexPairMap =
@@ -574,6 +580,12 @@ private:
 
     // the definition of each displayed entity in mesh display mode
     VtArray<MeshEntityData> _meshEntities;
+
+    // cache of FileMeshAdapter instances
+#ifdef CACHE_FILE_MESH_ADAPTERS
+    std::unordered_map<
+        std::string, std::shared_ptr<FileMeshAdapter>> _adapterCache;
+#endif
 };
 
 /*
@@ -856,8 +868,6 @@ void GolaemProcedural::PopulateCrowd(
                 _meshEntities.size() + simData->_entityCount);
         }
 
-        // TODO: multithread?
-
         for (int ientity = 0; ientity < simData->_entityCount; ++ientity) {
 
             // do nothing if the entity has been killed or excluded
@@ -935,7 +945,7 @@ void GolaemProcedural::PopulateCrowd(
                 entity.crowdFieldIndex = ifield;
                 entity.entityIndex = ientity;
                 entity.meshes = GenerateMeshes(
-                    cachedSimulation, frame, ientity);
+                    cachedSimulation, frame, ifield, ientity);
             }
         }
     }
@@ -945,10 +955,12 @@ void GolaemProcedural::PopulateCrowd(
  * Generates and returns a FileMeshAdapter for each mesh constituting
  * the given entity at the given frame.
  */
-std::vector<FileMeshAdapter> GolaemProcedural::GenerateMeshes(
-    CachedSimulation& cachedSimulation, double frame, int entityIndex)
+std::vector<std::shared_ptr<FileMeshAdapter>>
+GolaemProcedural::GenerateMeshes(
+    CachedSimulation& cachedSimulation, double frame,
+    int crowdFieldIndex, int entityIndex)
 {
-    std::vector<FileMeshAdapter> adapters;
+    std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
 
     const GlmSimulationData *simData =
         cachedSimulation.getFinalSimulationData();
@@ -998,15 +1010,42 @@ std::vector<FileMeshAdapter> GolaemProcedural::GenerateMeshes(
     const auto& meshIndices = outputData._meshAssetNameIndices;
     adapters.reserve(meshIndices.size());
 
-    for (int j = 0; j < meshIndices.size(); ++j) {
+#ifdef CACHE_FILE_MESH_ADAPTERS
+    char buffer[128];
+#endif
+
+    for (int imesh = 0; imesh < meshIndices.size(); ++imesh) {
         const GlmFileMeshTransform& meshXform =
-            geoFile._transforms[outputData._transformIndicesInGcgFile[j]];
+            geoFile._transforms[
+                outputData._transformIndicesInGcgFile[imesh]];
         const GlmFileMesh& fileMesh =
             geoFile._meshes[meshXform._meshIndex];
-        adapters.emplace_back(
+        std::shared_ptr<FileMeshAdapter> adapter;
+
+#ifdef CACHE_FILE_MESH_ADAPTERS
+        sprintf(buffer, "%d_%d_%d", crowdFieldIndex, entityIndex, imesh);
+        std::string key(buffer);
+        auto it = _adapterCache.find(key);
+        if (it == _adapterCache.end()) {
+            adapter = std::make_shared<FileMeshAdapter>(
+                fileMesh,
+                outputData._deformedVertices[0][imesh],
+                outputData._deformedNormals[0][imesh]);
+            _adapterCache[key] = adapter;
+        } else {
+            adapter = it->second;
+            adapter->UpdateVertices(
+                outputData._deformedVertices[0][imesh],
+                outputData._deformedNormals[0][imesh]);
+        }
+#else
+        adapter = std::make_shared<FileMeshAdapter>(
             fileMesh,
-            outputData._deformedVertices[0][j],
-            outputData._deformedNormals[0][j]);
+            outputData._deformedVertices[0][imesh],
+            outputData._deformedNormals[0][imesh]);
+#endif
+
+        adapters.emplace_back(adapter);
     }
 
     return adapters;
