@@ -11,13 +11,15 @@
 #include "pxr/imaging/hdGp/generativeProceduralPlugin.h"
 #include "pxr/imaging/hdGp/generativeProceduralPluginRegistry.h"
 
-#include "pxr/imaging/hd/retainedDataSource.h"
-#include "pxr/imaging/hd/primvarsSchema.h"
+#include "pxr/imaging/hd/cameraSchema.h"
 #include "pxr/imaging/hd/meshSchema.h"
 #include "pxr/imaging/hd/meshTopologySchema.h"
-#include "pxr/imaging/hd/xformSchema.h"
+#include "pxr/imaging/hd/primvarsSchema.h"
+#include "pxr/imaging/hd/renderSettingsSchema.h"
+#include "pxr/imaging/hd/retainedDataSource.h"
 #include "pxr/imaging/hd/sceneGlobalsSchema.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/imaging/hd/xformSchema.h"
 
 #include "pxr/usd/usdGeom/tokens.h"
 
@@ -324,11 +326,46 @@ public:
     {
         DependencyMap result;
 
-        // call Update() when the current frame changes
+        // call Update() when the current frame or the render settings
+        // (for motion blur) change
 
         result[HdSceneGlobalsSchema::GetDefaultPrimPath()] = {
-            HdSceneGlobalsSchema::GetCurrentFrameLocator()
+            HdSceneGlobalsSchema::GetCurrentFrameLocator(),
+            HdSceneGlobalsSchema::GetActiveRenderSettingsPrimLocator(),
         };
+
+        // call Update() when the motion blur shutter interval
+        // changes: if there is an active render settings prim, get
+        // the shutter interval from there, otherwise look for a
+        // primary camera and use its shutter settings
+
+        const HdSceneGlobalsSchema globals =
+            HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
+
+        if (globals) {
+            HdPathDataSourceHandle rsPrimDS =
+                globals.GetActiveRenderSettingsPrim();
+            if (rsPrimDS) {
+                const SdfPath rsPath = rsPrimDS->GetTypedValue(0);
+                if (!rsPath.IsEmpty()) {
+                    result[rsPath] = {
+                        HdRenderSettingsSchema::GetShutterIntervalLocator()
+                    };
+                }
+            } else {
+                HdPathDataSourceHandle camPathDS =
+                    globals.GetPrimaryCameraPrim();
+                if (camPathDS) {
+                    const SdfPath camPath = camPathDS->GetTypedValue(0);
+                    if (!camPath.IsEmpty()) {
+                        result[camPath] = {
+                            HdCameraSchema::GetShutterOpenLocator(),
+                            HdCameraSchema::GetShutterCloseLocator()
+                        };
+                    }
+                }
+            }
+        }
 
         return result;
     }
@@ -632,16 +669,118 @@ void GolaemProcedural::InitCrowd(
 
 }
 
+/*
+ * Fetches and returns the current frame number from globals.
+ */
+double GetCurrentFrame(const HdSceneIndexBaseRefPtr& inputScene)
+{
+    double frame = 0.0;
+
+    const HdSceneGlobalsSchema globals =
+        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
+
+    if (globals) {
+        frame = globals.GetCurrentFrame()->GetTypedValue(0);
+    }
+
+    return frame;
+}
+
+/*
+ * Fetches and returns the shutter interval for motion blur from the
+ * active render settings prim, if there is one. Returns true if there
+ * is, false if not.
+ */
+bool GetShutterFromRenderSettings(
+    const HdSceneIndexBaseRefPtr& inputScene, GfVec2d *shutter)
+{
+    const HdSceneGlobalsSchema globals =
+        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
+    if (!globals) {
+        return false;
+    }
+
+    HdPathDataSourceHandle rsPathDS = globals.GetActiveRenderSettingsPrim();
+    if (!rsPathDS) {
+        return false;
+    }
+
+    const SdfPath rsPath = rsPathDS->GetTypedValue(0);
+    if (rsPath.IsEmpty()) {
+        return false;
+    }
+
+    const HdSceneIndexPrim rsPrim = inputScene->GetPrim(rsPath);
+    HdRenderSettingsSchema rs =
+        HdRenderSettingsSchema::GetFromParent(rsPrim.dataSource);
+    if (!rs) {
+        return false;
+    }
+
+    HdVec2dDataSourceHandle shutterDS = rs.GetShutterInterval();
+    if (!shutterDS) {
+        return false;
+    }
+
+    *shutter = shutterDS->GetTypedValue(0);
+    return true;
+}
+
+/*
+ * Fetches and returns the shutter interval from the primary camera
+ * prim, if there is one. Returns true if there is, false if not.
+ */
+bool GetShutterFromCamera(
+    const HdSceneIndexBaseRefPtr& inputScene, GfVec2d *shutter)
+{
+    const HdSceneGlobalsSchema globals =
+        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
+    if (!globals) {
+        return false;
+    }
+
+    HdPathDataSourceHandle camPathDS = globals.GetPrimaryCameraPrim();
+    if (!camPathDS) {
+        return false;
+    }
+
+    const SdfPath camPath = camPathDS->GetTypedValue(0);
+    if (camPath.IsEmpty()) {
+        return false;
+    }
+
+    const HdSceneIndexPrim camPrim = inputScene->GetPrim(camPath);
+    HdCameraSchema cam =
+        HdCameraSchema::GetFromParent(camPrim.dataSource);
+    if (!cam) {
+        return false;
+    }
+
+    HdDoubleDataSourceHandle openDS = cam.GetShutterOpen();
+    HdDoubleDataSourceHandle closeDS = cam.GetShutterClose();
+    if (!(openDS && closeDS)) {
+        return false;
+    }
+
+    shutter->Set(openDS->GetTypedValue(0), closeDS->GetTypedValue(0));
+    return true;
+}
+
 void GolaemProcedural::PopulateCrowd(
     const HdSceneIndexBaseRefPtr& inputScene)
 {
-    // fetch current frame
+    // fetch current frame and motion blur settings
 
-    double frame = 0.0;
-    const HdSceneGlobalsSchema globals =
-        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
-    if (globals) {
-        frame = globals.GetCurrentFrame()->GetTypedValue(0.0);
+    double frame = GetCurrentFrame(inputScene);
+    std::cout << "current frame: " << frame << '\n';
+
+    GfVec2d shutter;
+    if (GetShutterFromRenderSettings(inputScene, &shutter)) {
+        std::cout << "motion blur shutter from render settings: "
+                  << shutter[0] << ' ' << shutter[1] << '\n';
+    } else if (GetShutterFromCamera(inputScene, &shutter)) {
+        std::cout << "motion blur shutter from camera: "
+                  << shutter[0] << ' ' << shutter[1] << '\n';
     }
 
     // iterate over entities in crowd fields
