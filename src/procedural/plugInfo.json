@@ -24,6 +24,20 @@
                         "formatId": "glmUsdFormat",
                         "primary": true,
                         "target": "usd"
+                    },
+                    "CubePerMeshPointProceduralPlugin": {
+                        "bases": [
+                            "HdGpGenerativeProceduralPlugin"
+                        ], 
+                        "displayName": "CubePerMeshPoint",
+                        "priority": 0
+                    },
+                    "GolaemProceduralPlugin": {
+                        "bases": [
+                            "HdGpGenerativeProceduralPlugin"
+                        ], 
+                        "displayName": "GolaemHydra",
+                        "priority": 0
                     }
                 }
             },

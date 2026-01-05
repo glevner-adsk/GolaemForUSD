@@ -175,6 +175,7 @@ if(GOLAEMUSD_STANDALONE_BUILD)
     list_files( "src/procedural" "h;cpp;json" )
     list_files( "src/utils" "h;cpp" )
     list_files( "src/version" "h;cpp;rc")
+    list_files( "src/hdgp" "cpp" )
 
     # Include and Link Dependencies
     add_library( ${PROJECT_NAME} SHARED ${LIST_FILES} )
@@ -231,7 +232,7 @@ if(GOLAEMUSD_STANDALONE_BUILD)
             endif ()
         endif()
     else()
-        target_link_libraries( ${PROJECT_NAME} usd usdGeom)
+        target_link_libraries( ${PROJECT_NAME} hdGp usd usdGeom)
     endif()
 
     if(MSVC)
