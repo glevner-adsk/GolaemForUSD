@@ -684,33 +684,6 @@ void GolaemProcedural::InitCrowd(
         }
         _factory->loadGolaemCharacters(list);
     }
-
-    // GolaemForUSD does this; do we need to?
-    /*
-    for (TfToken fieldName: _args.crowdFields) {
-        if (fieldName.IsEmpty()) {
-            continue;
-        }
-
-        // force creation of simulation data (might change Golaem
-        // characters if there is a CreateEntity node)
-
-        CachedSimulation& cachedSimulation =
-            _factory->getCachedSimulation(
-                _args.cacheDir.data(), _args.cacheName.data(),
-                fieldName.data());
-        cachedSimulation.getFinalSimulationData();
-
-        // compute assets if needed
-
-        int firstFrame, lastFrame;
-        cachedSimulation.getSrcFrameRangeAvailableOnDisk(
-            firstFrame, lastFrame);
-
-        const auto& entityAssets =
-            cachedSimulation.getFinalEntityAssets(firstFrame);
-    }
-    */
 }
 
 /*
