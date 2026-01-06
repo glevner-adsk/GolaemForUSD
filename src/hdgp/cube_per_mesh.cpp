@@ -150,7 +150,7 @@ public:
         char buffer[64];
         SdfPath myPath = _GetProceduralPrimPath();
         for (int i = 0; i < static_cast<int>(points.size()); ++i) {
-            ::sprintf(buffer, "c%d", i);
+            ::sprintf_s(buffer, "c%d", i);
             SdfPath childPath = myPath.AppendChild(TfToken(buffer));
             result[childPath] = HdPrimTypeTokens->mesh;
 
@@ -186,7 +186,7 @@ public:
     // Returns dataSource of a child prim -- in this case deferring the
     // calculation of the transform matrix to a _XformFromMeshPointDataSource
     HdSceneIndexPrim GetChildPrim(
-        const HdSceneIndexBaseRefPtr &inputScene,
+        const HdSceneIndexBaseRefPtr &/*inputScene*/,
         const SdfPath &childPrimPath) override
     {
         HdSceneIndexPrim result;

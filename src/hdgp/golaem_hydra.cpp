@@ -412,7 +412,7 @@ public:
     ChildPrimTypeMap Update(
         const HdSceneIndexBaseRefPtr &inputScene,
         const ChildPrimTypeMap &previousResult,
-        const DependencyMap &dirtiedDependencies,
+        const DependencyMap &/*dirtiedDependencies*/,
         HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims) override
     {
         // fetch arguments (primvars) the first time only (we assume
@@ -437,8 +437,8 @@ public:
 
             _childIndices.clear();
 
-            for (int i = 0; i < _bboxEntities.size(); ++i) {
-                sprintf(buffer, "c%d", i);
+            for (size_t i = 0; i < _bboxEntities.size(); ++i) {
+                sprintf_s(buffer, "c%zu", i);
                 SdfPath childPath = myPath.AppendChild(TfToken(buffer));
                 result[childPath] = HdPrimTypeTokens->mesh;
                 _childIndices[childPath] = i;
@@ -462,9 +462,9 @@ public:
 
             _childIndexPairs.clear();
 
-            for (int i = 0; i < _meshEntities.size(); ++i) {
+            for (size_t i = 0; i < _meshEntities.size(); ++i) {
                 const MeshEntityData& entity = _meshEntities[i];
-                for (int j = 0; j < entity.meshes.size(); ++j) {
+                for (size_t j = 0; j < entity.meshes.size(); ++j) {
 
                     // including the crowd field, entity and mesh in
                     // the path enables us to tell Hydra that, if the
@@ -472,11 +472,11 @@ public:
                     // only the primvars (points and normals) will
                     // have changed
 
-                    sprintf(buffer, "c%d_%d_%d",
+                    sprintf_s(buffer, "c%d_%d_%zu",
                             entity.crowdFieldIndex, entity.entityIndex, j);
                     SdfPath childPath = myPath.AppendChild(TfToken(buffer));
                     result[childPath] = HdPrimTypeTokens->mesh;
-                    _childIndexPairs[childPath] = std::pair<int, int>(i, j);
+                    _childIndexPairs[childPath] = {i, j};
 
                     if (previousResult.size() > 0) {
                         outputDirtiedPrims->emplace_back(
@@ -491,7 +491,7 @@ public:
     }
 
     HdSceneIndexPrim GetChildPrim(
-        const HdSceneIndexBaseRefPtr &inputScene,
+        const HdSceneIndexBaseRefPtr &/*inputScene*/,
         const SdfPath &childPrimPath) override
     {
         HdSceneIndexPrim result;
@@ -530,8 +530,8 @@ public:
             if (it == _childIndexPairs.end()) {
                 return result;
             }
-            int entityIndex = it->second.first;
-            int meshIndex = it->second.second;
+            size_t entityIndex = it->second.first;
+            size_t meshIndex = it->second.second;
             result.primType = HdPrimTypeTokens->mesh;
             const std::shared_ptr<FileMeshAdapter>& adapter =
                 _meshEntities[entityIndex].meshes[meshIndex];
@@ -554,9 +554,9 @@ private:
         CachedSimulation& cachedSimulation, double frame,
         int crowdFieldIndex, int entityIndex);
 
-    using _ChildIndexMap = std::unordered_map<SdfPath, int, TfHash>;
+    using _ChildIndexMap = std::unordered_map<SdfPath, size_t, TfHash>;
     using _ChildIndexPairMap =
-        std::unordered_map<SdfPath, std::pair<int, int>, TfHash>;
+        std::unordered_map<SdfPath, std::pair<size_t, size_t>, TfHash>;
 
     // primvars provided by the procedural prim
     Args _args;
@@ -670,7 +670,7 @@ Args GolaemProcedural::GetArgs(
  * change.
  */
 void GolaemProcedural::InitCrowd(
-    const HdSceneIndexBaseRefPtr& inputScene)
+    const HdSceneIndexBaseRefPtr& /*inputScene*/)
 {
     // load characters
 
@@ -841,7 +841,7 @@ void GolaemProcedural::PopulateCrowd(
                 _meshEntities.size() + simData->_entityCount);
         }
 
-        for (int ientity = 0; ientity < simData->_entityCount; ++ientity) {
+        for (uint32_t ientity = 0; ientity < simData->_entityCount; ++ientity) {
 
             // do nothing if the entity has been killed or excluded
 
@@ -931,7 +931,7 @@ void GolaemProcedural::PopulateCrowd(
 std::vector<std::shared_ptr<FileMeshAdapter>>
 GolaemProcedural::GenerateMeshes(
     CachedSimulation& cachedSimulation, double frame,
-    int crowdFieldIndex, int entityIndex)
+    int /*crowdFieldIndex*/, int entityIndex)
 {
     std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
 
@@ -940,7 +940,7 @@ GolaemProcedural::GenerateMeshes(
     const GlmFrameData *frameData =
         cachedSimulation.getFinalFrameData(frame, UINT32_MAX, true);
 
-    auto entityType = simData->_entityTypes[entityIndex];
+    // auto entityType = simData->_entityTypes[entityIndex];
     auto characterIndex = simData->_characterIdx[entityIndex];
     const GolaemCharacter* character =
         _factory->getGolaemCharacter(characterIndex);

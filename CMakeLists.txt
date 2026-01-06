@@ -311,6 +311,7 @@ else()
     list_files( "src/procedural" "h;cpp;json" )
     list_files( "src/utils" "h;cpp" )
     list_files( "src/version" "h;cpp;rc")
+    list_files( "src/hdgp" "cpp" )
 
     # Create a library
     add_library( ${PROJECT_NAME} SHARED ${LIST_FILES} )
@@ -419,7 +420,7 @@ else()
             )
         endif()
     else()
-        target_link_libraries( ${PROJECT_NAME} usd usdGeom)
+        target_link_libraries( ${PROJECT_NAME} usd usdGeom hdGp)
     endif()
 
     # cannot compile debug - windows or linux
