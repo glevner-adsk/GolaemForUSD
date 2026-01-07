@@ -2995,7 +2995,7 @@ namespace glm
         //-----------------------------------------------------------------------------
         GolaemUSD_DataImpl::SkelEntityFrameData::SP GolaemUSD_DataImpl::_ComputeSkelEntity(EntityData::SP entityData, double frame)
         {
-            SkelEntityFrameData::SP skelEntiyFrameData = entityData->getFrameData<SkelEntityFrameData>(frame, _params.glmCachedFramesCount);
+            SkelEntityFrameData::SP skelEntiyFrameData = entityData->getFrameData<SkelEntityFrameData>(frame, static_cast<size_t>(_params.glmCachedFramesCount));
 
             if (skelEntiyFrameData->entityData != nullptr)
             {
@@ -3031,7 +3031,7 @@ namespace glm
 
             uint16_t boneCount = simuData->_boneCount[entityType];
 
-            skelEntiyFrameData->scales.resize(boneCount, GfVec3h(1, 1, 1));
+            skelEntiyFrameData->scales.assign(boneCount, GfVec3h(1, 1, 1));
             skelEntiyFrameData->scales.front().Set(entityScale, entityScale, entityScale); // root bone gets entity scale
             skelEntiyFrameData->rotations.resize(boneCount);
             skelEntiyFrameData->translations.resize(boneCount);
@@ -3225,7 +3225,7 @@ namespace glm
         //-----------------------------------------------------------------------------
         GolaemUSD_DataImpl::SkinMeshEntityFrameData::SP GolaemUSD_DataImpl::_ComputeSkinMeshEntity(EntityData::SP entityData, double frame)
         {
-            SkinMeshEntityFrameData::SP skinMeshEntityFrameData = entityData->getFrameData<SkinMeshEntityFrameData>(frame, _params.glmCachedFramesCount);
+            SkinMeshEntityFrameData::SP skinMeshEntityFrameData = entityData->getFrameData<SkinMeshEntityFrameData>(frame, static_cast<size_t>(_params.glmCachedFramesCount));
 
             if (skinMeshEntityFrameData->entityData != nullptr)
             {
@@ -3821,7 +3821,7 @@ namespace glm
                         }
                     }
 
-                    meshTemplateData->defaultPoints.resize(iActualVertex, GfVec3f(0.0f, 0.0f, 0.0f));
+                    meshTemplateData->defaultPoints.assign(iActualVertex, GfVec3f(0.0f, 0.0f, 0.0f));
 
                     for (unsigned int iFbxPoly = 0; iFbxPoly < fbxPolyCount; ++iFbxPoly)
                     {
@@ -3839,7 +3839,7 @@ namespace glm
                         }
                     }
 
-                    meshTemplateData->defaultNormals.resize(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
+                    meshTemplateData->defaultNormals.assign(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
 
                     // find how many uv layers are available
                     int uvSetCount = fbxMesh->GetLayerCount(FbxLayerElement::eUV);
@@ -3912,7 +3912,7 @@ namespace glm
                     glm::crowdio::GlmFileMeshTransform& assetFileMeshTransform = gcgCharacter->getGeometry()._transforms[outputData._transformIndicesInGcgFile[iRenderMesh]];
                     glm::crowdio::GlmFileMesh& assetFileMesh = gcgCharacter->getGeometry()._meshes[assetFileMeshTransform._meshIndex];
 
-                    meshTemplateData->defaultPoints.resize(assetFileMesh._vertexCount, GfVec3f(0.0f, 0.0f, 0.0f));
+                    meshTemplateData->defaultPoints.assign(assetFileMesh._vertexCount, GfVec3f(0.0f, 0.0f, 0.0f));
 
                     for (uint32_t iPoly = 0, iVertex = 0; iPoly < assetFileMesh._polygonCount; ++iPoly)
                     {
@@ -3926,7 +3926,7 @@ namespace glm
                         }
                     }
 
-                    meshTemplateData->defaultNormals.resize(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
+                    meshTemplateData->defaultNormals.assign(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
 
                     meshTemplateData->uvSets.resize(assetFileMesh._uvSetCount);
                     for (size_t iUVSet = 0; iUVSet < assetFileMesh._uvSetCount; ++iUVSet)
