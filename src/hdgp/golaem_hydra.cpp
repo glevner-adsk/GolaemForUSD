@@ -1,15 +1,17 @@
 /*
  * TODO:
- * - FBX support?
- * - materials
- * - UVs
+ * - shader and PP attributes
+ * - material assignment by surface shader
+ * - layout file support
  * - LODs
  * - motion blur
+ * - FBX support
  */
 #include "pxr/imaging/hdGp/generativeProceduralPlugin.h"
 #include "pxr/imaging/hdGp/generativeProceduralPluginRegistry.h"
 
 #include "pxr/imaging/hd/cameraSchema.h"
+#include "pxr/imaging/hd/materialBindingsSchema.h"
 #include "pxr/imaging/hd/meshSchema.h"
 #include "pxr/imaging/hd/meshTopologySchema.h"
 #include "pxr/imaging/hd/primvarsSchema.h"
@@ -52,15 +54,8 @@ using glm::crowdio::GlmFrameData;
 using glm::crowdio::GlmGeometryFile;
 using glm::crowdio::GlmNormalMode;
 using glm::crowdio::GlmSimulationData;
+using glm::crowdio::GlmUVMode;
 using glm::crowdio::SimulationCacheFactory;
-
-/*
- * If defined, maintain a cache of FileMeshAdapter instances, so that
- * we can update their deformed vertices and normals at each frame
- * rather than recreating them from scratch. This doesn't seem to be
- * particularly effective, though.
- */
-//#define CACHE_FILE_MESH_ADAPTERS
 
 namespace
 {
@@ -72,10 +67,12 @@ TF_DEFINE_PRIVATE_TOKENS(
     (cacheDir)
     (characterFiles)
     (entityIds)
-    (geometryTag)
     (displayMode)
+    (geometryTag)
+    (materialPath)
     (bbox)
     (mesh)
+    (st)
 );
 
 /*
@@ -85,8 +82,9 @@ struct Args
 {
     Args()
         : entityIds("*"),
+          displayMode(golaemTokens->mesh),
           geometryTag(0),
-          displayMode(golaemTokens->mesh)
+          materialPath("/Materials")
         {}
 
     VtTokenArray crowdFields;
@@ -94,8 +92,9 @@ struct Args
     TfToken cacheDir;
     VtTokenArray characterFiles;
     TfToken entityIds;
-    short geometryTag;
     TfToken displayMode;
+    short geometryTag;
+    TfToken materialPath;
 };
 
 /*
@@ -107,23 +106,29 @@ class FileMeshAdapter
 {
     using IntArrayDS = HdRetainedTypedSampledDataSource<VtIntArray>;
     using Vec3fArrayDS = HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
+    using Vec2fArrayDS = HdRetainedTypedSampledDataSource<VtArray<GfVec2f>>;
 
 public:
     /*
      * The FileMeshAdapter constructor makes copies of all the data it
-     * needs, so the GlmFileMesh, vertices and normals can all be
-     * deleted afterwards.
+     * needs, so all the arguments can be deleted afterwards.
      */
     FileMeshAdapter(
         const GlmFileMesh& fileMesh,
         const glm::Array<glm::Vector3>& deformedVertices,
-        const glm::Array<glm::Vector3>& deformedNormals)
+        const glm::Array<glm::Vector3>& deformedNormals,
+        const SdfPath& material)
         : _vertexCounts(fileMesh._polygonCount),
           _vertexIndices(fileMesh._polygonsTotalVertexCount),
           _vertices(fileMesh._vertexCount),
           _normals(fileMesh._normalCount),
-          _normalMode(GlmNormalMode(fileMesh._normalMode))
+          _normalMode(GlmNormalMode(fileMesh._normalMode)),
+          _uvMode(GlmUVMode(fileMesh._uvMode)),
+          _material(material)
     {
+        assert(deformedVertices.size() == _vertices.size());
+        assert(deformedNormals.size() == _normals.size());
+
         for (int i = 0; i < _vertexCounts.size(); ++i) {
             _vertexCounts[i] = fileMesh._polygonsVertexCount[i];
         }
@@ -132,34 +137,38 @@ public:
             _vertexIndices[i] = fileMesh._polygonsVertexIndices[i];
         }
 
-        if (_normalMode ==
-            glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
-            _normalIndices.resize(fileMesh._polygonsTotalVertexCount);
-            for (int i = 0; i < _normalIndices.size(); ++i) {
-                _normalIndices[i] = fileMesh._polygonsNormalIndices[i];
-            }
-        }
-
-        UpdateVertices(deformedVertices, deformedNormals);
-    }
-
-    /*
-     * Updates the deformed vertices and normals of an existing
-     * FileMeshAdapter.
-     */
-    void UpdateVertices(
-        const glm::Array<glm::Vector3>& deformedVertices,
-        const glm::Array<glm::Vector3>& deformedNormals)
-    {
-        assert(deformedVertices.size() == _vertices.size());
-        assert(deformedNormals.size() == _normals.size());
-
         for (int i = 0; i < _vertices.size(); ++i) {
             _vertices[i].Set(deformedVertices[i].getFloatValues());
         }
 
-        for (int i = 0; i < _normals.size(); ++i) {
-            _normals[i].Set(deformedNormals[i].getFloatValues());
+        if (_normals.size() > 0) {
+            if (_normalMode ==
+                glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
+                _normalIndices.resize(fileMesh._polygonsTotalVertexCount);
+                for (int i = 0; i < _normalIndices.size(); ++i) {
+                    _normalIndices[i] = fileMesh._polygonsNormalIndices[i];
+                }
+            }
+            for (int i = 0; i < _normals.size(); ++i) {
+                _normals[i].Set(deformedNormals[i].getFloatValues());
+            }
+        }
+
+        // note that if there are multiple UV sets, we only take the
+        // first; the others are ignored
+
+        if (fileMesh._uvSetCount > 0 && fileMesh._uvCoordCount[0] > 0) {
+            _uvs.resize(fileMesh._uvCoordCount[0]);
+            if (_uvMode ==
+                glm::crowdio::GLM_UV_PER_POLYGON_VERTEX_INDEXED) {
+                _uvIndices.resize(fileMesh._polygonsTotalVertexCount);
+                for (int i = 0; i < _uvIndices.size(); ++i) {
+                    _uvIndices[i] = fileMesh._polygonsUVIndices[i];
+                }
+            }
+            for (int i = 0; i < _uvs.size(); ++i) {
+                _uvs[i].Set(fileMesh._us[0][i], fileMesh._vs[0][i]);
+            }
         }
     }
 
@@ -179,6 +188,12 @@ public:
 
     HdContainerDataSourceHandle GetPrimvarsDataSource() const
     {
+        VtTokenArray dataNames;
+        VtArray<HdDataSourceBaseHandle> dataSources;
+
+        dataNames.reserve(3);
+        dataSources.reserve(3);
+
         // vertex data source
 
         HdContainerDataSourceHandle vertexDataSource =
@@ -191,6 +206,9 @@ public:
                 HdPrimvarSchema::BuildRoleDataSource(
                     HdPrimvarSchemaTokens->point))
             .Build();
+
+        dataNames.push_back(HdPrimvarsSchemaTokens->points);
+        dataSources.push_back(vertexDataSource);
 
         // normal data source, if the mesh contains normals
 
@@ -227,26 +245,82 @@ public:
                 HdPrimvarSchema::BuildRoleDataSource(
                     HdPrimvarSchemaTokens->normal));
 
-            normalDataSource = normalBuilder.Build();
+            dataNames.push_back(HdPrimvarsSchemaTokens->normals);
+            dataSources.push_back(normalBuilder.Build());
         }
 
-        // the final primvars data source contains both the vertices
-        // and the normals
+        // UV data source, if the mesh contains UVs
+
+        HdContainerDataSourceHandle uvDataSource;
+
+        if (_uvs.size() > 0) {
+            HdPrimvarSchema::Builder uvBuilder;
+
+            // UVs may or may not be indexed
+
+            if (_uvMode ==
+                glm::crowdio::GLM_UV_PER_POLYGON_VERTEX_INDEXED) {
+                uvBuilder.SetIndexedPrimvarValue(Vec2fArrayDS::New(_uvs));
+                uvBuilder.SetIndices(IntArrayDS::New(_uvIndices));
+            } else {
+                uvBuilder.SetPrimvarValue(Vec2fArrayDS::New(_uvs));
+            }
+
+            // uvs may or may not be shared by polygons using the same
+            // vertices
+
+            if (_uvMode ==
+                glm::crowdio::GLM_UV_PER_CONTROL_POINT) {
+                uvBuilder.SetInterpolation(
+                    HdPrimvarSchema::BuildInterpolationDataSource(
+                        HdPrimvarSchemaTokens->vertex));
+            } else {
+                uvBuilder.SetInterpolation(
+                    HdPrimvarSchema::BuildInterpolationDataSource(
+                        HdPrimvarSchemaTokens->faceVarying));
+            }
+
+            uvBuilder.SetRole(
+                HdPrimvarSchema::BuildRoleDataSource(
+                    HdPrimvarSchemaTokens->textureCoordinate));
+
+            dataNames.push_back(golaemTokens->st);
+            dataSources.push_back(uvBuilder.Build());
+        }
+
+        // the final primvars data source contains the vertices,
+        // normals and UVs
 
         return HdRetainedContainerDataSource::New(
-            HdPrimvarsSchemaTokens->points,
-            vertexDataSource,
-            HdPrimvarsSchemaTokens->normals,
-            normalDataSource);
+            dataNames.size(), dataNames.data(), dataSources.data());
+    }
+
+    HdContainerDataSourceHandle GetMaterialDataSource() const
+    {
+        if (_material.IsEmpty()) {
+            return HdContainerDataSourceHandle();
+        }
+
+        return HdRetainedContainerDataSource::New(
+            HdMaterialBindingsSchemaTokens->allPurpose,
+            HdMaterialBindingSchema::Builder()
+            .SetPath(
+                HdRetainedTypedSampledDataSource<SdfPath>::New(
+                    _material))
+            .Build());
     }
 
 private:
     VtIntArray _vertexCounts;
     VtIntArray _vertexIndices;
-    VtIntArray _normalIndices;
     VtVec3fArray _vertices;
-    VtVec3fArray _normals;
+    VtIntArray _normalIndices;
     GlmNormalMode _normalMode;
+    VtVec3fArray _normals;
+    VtIntArray _uvIndices;
+    GlmUVMode _uvMode;
+    VtVec2fArray _uvs;
+    SdfPath _material;
 };
 
 /*
@@ -539,7 +613,9 @@ public:
                 HdMeshSchemaTokens->mesh,
                 adapter->GetMeshDataSource(),
                 HdPrimvarsSchemaTokens->primvars,
-                adapter->GetPrimvarsDataSource());
+                adapter->GetPrimvarsDataSource(),
+                HdMaterialBindingsSchemaTokens->materialBindings,
+                adapter->GetMaterialDataSource());
         }
 
         return result;
@@ -580,12 +656,6 @@ private:
 
     // the definition of each displayed entity in mesh display mode
     VtArray<MeshEntityData> _meshEntities;
-
-    // cache of FileMeshAdapter instances
-#ifdef CACHE_FILE_MESH_ADAPTERS
-    std::unordered_map<
-        std::string, std::shared_ptr<FileMeshAdapter>> _adapterCache;
-#endif
 };
 
 /*
@@ -657,9 +727,11 @@ Args GolaemProcedural::GetArgs(
     GetTypedPrimvar(
         primvars, golaemTokens->entityIds, result.entityIds);
     GetTypedPrimvar(
+        primvars, golaemTokens->displayMode, result.displayMode);
+    GetTypedPrimvar(
         primvars, golaemTokens->geometryTag, result.geometryTag);
     GetTypedPrimvar(
-        primvars, golaemTokens->displayMode, result.displayMode);
+        primvars, golaemTokens->materialPath, result.materialPath);
 
     return result;
 }
@@ -940,7 +1012,6 @@ GolaemProcedural::GenerateMeshes(
     const GlmFrameData *frameData =
         cachedSimulation.getFinalFrameData(frame, UINT32_MAX, true);
 
-    // auto entityType = simData->_entityTypes[entityIndex];
     auto characterIndex = simData->_characterIdx[entityIndex];
     const GolaemCharacter* character =
         _factory->getGolaemCharacter(characterIndex);
@@ -966,14 +1037,14 @@ GolaemProcedural::GenerateMeshes(
         glm::crowdio::glmPrepareEntityGeometry(&inputData, &outputData);
 
     if (geoStatus != glm::crowdio::GIO_SUCCESS) {
-        std::cerr << "glmPrepareEntityGeometry returned error: "
+        std::cerr << "glmPrepareEntityGeometry() returned error: "
                   << glmConvertGeometryGenerationStatus(geoStatus)
                   << '\n';
         return adapters;
     }
 
     if (outputData._geoType != glm::crowdio::GeometryType::GCG) {
-        std::cerr << "geoType is not GCG\n";
+        std::cerr << "geometry type is not GCG, ignoring\n";
         return adapters;
     }
 
@@ -983,42 +1054,35 @@ GolaemProcedural::GenerateMeshes(
     const auto& meshIndices = outputData._meshAssetNameIndices;
     adapters.reserve(meshIndices.size());
 
-#ifdef CACHE_FILE_MESH_ADAPTERS
-    char buffer[128];
-#endif
-
     for (int imesh = 0; imesh < meshIndices.size(); ++imesh) {
         const GlmFileMeshTransform& meshXform =
             geoFile._transforms[
                 outputData._transformIndicesInGcgFile[imesh]];
         const GlmFileMesh& fileMesh =
             geoFile._meshes[meshXform._meshIndex];
-        std::shared_ptr<FileMeshAdapter> adapter;
 
-#ifdef CACHE_FILE_MESH_ADAPTERS
-        sprintf(buffer, "%d_%d_%d", crowdFieldIndex, entityIndex, imesh);
-        std::string key(buffer);
-        auto it = _adapterCache.find(key);
-        if (it == _adapterCache.end()) {
-            adapter = std::make_shared<FileMeshAdapter>(
+        SdfPath material;
+        int shadingGroupIndex = outputData._meshShadingGroups[imesh];
+        if (shadingGroupIndex >= 0) {
+            const glm::ShadingGroup& shadingGroup =
+                inputData._character->_shadingGroups[shadingGroupIndex];
+            std::string matpath(_args.materialPath.data());
+            if (matpath.size() > 0) {
+                if (matpath.back() == '/') {
+                    matpath.pop_back();
+                }
+                SdfPath parent(matpath);
+                material = parent.AppendElementString(
+                    std::string(shadingGroup._name.c_str()));
+            }
+        }
+
+        adapters.emplace_back(
+            std::make_shared<FileMeshAdapter>(
                 fileMesh,
                 outputData._deformedVertices[0][imesh],
-                outputData._deformedNormals[0][imesh]);
-            _adapterCache[key] = adapter;
-        } else {
-            adapter = it->second;
-            adapter->UpdateVertices(
-                outputData._deformedVertices[0][imesh],
-                outputData._deformedNormals[0][imesh]);
-        }
-#else
-        adapter = std::make_shared<FileMeshAdapter>(
-            fileMesh,
-            outputData._deformedVertices[0][imesh],
-            outputData._deformedNormals[0][imesh]);
-#endif
-
-        adapters.emplace_back(adapter);
+                outputData._deformedNormals[0][imesh],
+                material));
     }
 
     return adapters;
