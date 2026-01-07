@@ -1,8 +1,8 @@
 /***************************************************************************
-*                                                                          *
-*  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
-*                                                                          *
-***************************************************************************/
+ *                                                                          *
+ *  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
+ *                                                                          *
+ ***************************************************************************/
 
 #pragma once
 
@@ -52,6 +52,7 @@ namespace glm
     xx(TfToken, glmAttributeNamespace, "")          \
     xx(short, glmLodMode, 0)                        \
     xx(GfVec3f, glmCameraPos, 0)                    \
+    xx(int, glmCachedFramesCount, 3)                \
     xx(TfToken, glmProceduralFile, "")
         // clang-format on
 
@@ -80,6 +81,7 @@ namespace glm
     (glmAttributeNamespace)             \
     (glmLodMode)                        \
     (glmCameraPos)                      \
+    (glmCachedFramesCount)              \
     (glmProceduralFile)
         // clang-format on
 

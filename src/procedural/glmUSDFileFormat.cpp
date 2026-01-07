@@ -1,8 +1,8 @@
 /***************************************************************************
-*                                                                          *
-*  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
-*                                                                          *
-***************************************************************************/
+ *                                                                          *
+ *  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
+ *                                                                          *
+ ***************************************************************************/
 
 #include "glmUSDFileFormat.h"
 #include "glmUSDData.h"
@@ -10,7 +10,13 @@
 USD_INCLUDES_START
 #include <pxr/pxr.h>
 #include <pxr/usd/pcp/dynamicFileFormatContext.h>
+#if PXR_VERSION > 2508
+#include <pxr/usd/sdf/usdaFileFormat.h>
+#define USDA_TOKENS SdfUsdaFileFormatTokens
+#else
 #include <pxr/usd/usd/usdaFileFormat.h>
+#define USDA_TOKENS UsdUsdaFileFormatTokens
+#endif
 USD_INCLUDES_END
 
 #include <glmCoreDefinitions.h>
@@ -93,7 +99,7 @@ namespace glm
             const std::string& comment) const
         {
             // Write the generated contents in usda text format.
-            return SdfFileFormat::FindById(UsdUsdaFileFormatTokens->Id)->WriteToString(layer, str, comment);
+            return SdfFileFormat::FindById(USDA_TOKENS->Id)->WriteToString(layer, str, comment);
         }
 
         //-----------------------------------------------------------------------------
@@ -103,7 +109,7 @@ namespace glm
             size_t indent) const
         {
             // Write the generated contents in usd format.
-            return SdfFileFormat::FindById(UsdUsdaFileFormatTokens->Id)->WriteToStream(spec, out, indent);
+            return SdfFileFormat::FindById(USDA_TOKENS->Id)->WriteToStream(spec, out, indent);
         }
 
         //-----------------------------------------------------------------------------
