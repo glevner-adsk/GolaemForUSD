@@ -2995,16 +2995,16 @@ namespace glm
         //-----------------------------------------------------------------------------
         GolaemUSD_DataImpl::SkelEntityFrameData::SP GolaemUSD_DataImpl::_ComputeSkelEntity(EntityData::SP entityData, double frame)
         {
-            SkelEntityFrameData::SP skelEntiyFrameData = entityData->getFrameData<SkelEntityFrameData>(frame, static_cast<size_t>(_params.glmCachedFramesCount));
+            SkelEntityFrameData::SP skelEntityFrameData = entityData->getFrameData<SkelEntityFrameData>(frame, static_cast<size_t>(_params.glmCachedFramesCount));
 
-            if (skelEntiyFrameData->entityData != nullptr)
+            if (skelEntityFrameData->entityData != nullptr)
             {
                 // getFrameData returned an existing SkelEntityFrameData
-                return skelEntiyFrameData;
+                return skelEntityFrameData;
             }
 
             // getFrameData returned a new SkelEntityFrameData, set entityData to mark it as computed
-            skelEntiyFrameData->entityData = entityData;
+            skelEntityFrameData->entityData = entityData;
 
 #ifdef TRACY_ENABLE
             ZoneScopedNC("ComputeSkelEntity", GLM_COLOR_CACHE);
@@ -3013,10 +3013,10 @@ namespace glm
             glm::GlmString frameStr = "Frame=" + glm::toString(frame);
             ZoneText(frameStr.c_str(), frameStr.size());
 #endif
-            _ComputeEntity(skelEntiyFrameData, frame);
-            if (!skelEntiyFrameData->enabled)
+            _ComputeEntity(skelEntityFrameData, frame);
+            if (!skelEntityFrameData->enabled)
             {
-                return skelEntiyFrameData;
+                return skelEntityFrameData;
             }
 
             SkelEntityData* skelEntityData = static_cast<SkelEntityData*>(entityData.getImpl());
@@ -3031,10 +3031,10 @@ namespace glm
 
             uint16_t boneCount = simuData->_boneCount[entityType];
 
-            skelEntiyFrameData->scales.assign(boneCount, GfVec3h(1, 1, 1));
-            skelEntiyFrameData->scales.front().Set(entityScale, entityScale, entityScale); // root bone gets entity scale
-            skelEntiyFrameData->rotations.resize(boneCount);
-            skelEntiyFrameData->translations.resize(boneCount);
+            skelEntityFrameData->scales.assign(boneCount, GfVec3h(1, 1, 1));
+            skelEntityFrameData->scales.front().Set(entityScale, entityScale, entityScale); // root bone gets entity scale
+            skelEntityFrameData->rotations.resize(boneCount);
+            skelEntityFrameData->translations.resize(boneCount);
 
             const glm::PODArray<size_t>& specificToCacheBoneIndices = entityData->inputGeoData._character->_converterMapping._skeletonDescription->getSpecificToCacheBoneIndices();
 
@@ -3050,7 +3050,7 @@ namespace glm
                         continue;
                     }
 
-                    GfVec3h& scaleValue = skelEntiyFrameData->scales[specificBoneIndex];
+                    GfVec3h& scaleValue = skelEntityFrameData->scales[specificBoneIndex];
 
                     float (&snsCacheValues)[4] = frameData->_snsValues[skelEntityData->boneSnsOffset + iSnS];
 
@@ -3064,7 +3064,7 @@ namespace glm
                 // here all scales are WORLD scales. Need to patch back local scales from there :
                 for (uint16_t iBone = 0; iBone < boneCount; ++iBone)
                 {
-                    GfVec3h& scaleValue = skelEntiyFrameData->scales[iBone];
+                    GfVec3h& scaleValue = skelEntityFrameData->scales[iBone];
 
                     const HierarchicalBone* currentBone = entityData->inputGeoData._character->_converterMapping._skeletonDescription->getBones()[iBone];
                     const HierarchicalBone* fatherBone = currentBone->getFather();
@@ -3121,10 +3121,10 @@ namespace glm
 
                 Quaternion boneLOri = fatherBoneWOri.computeInverse() * boneWOri;
 
-                skelEntiyFrameData->translations[iBone] = GfVec3f(currentPosValues.getFloatValues());
-                skelEntiyFrameData->rotations[iBone] = GfQuatf(boneLOri.w, boneLOri.x, boneLOri.y, boneLOri.z);
+                skelEntityFrameData->translations[iBone] = GfVec3f(currentPosValues.getFloatValues());
+                skelEntityFrameData->rotations[iBone] = GfQuatf(boneLOri.w, boneLOri.x, boneLOri.y, boneLOri.z);
             }
-            return skelEntiyFrameData;
+            return skelEntityFrameData;
         }
 
         //-----------------------------------------------------------------------------
