@@ -94,7 +94,7 @@ struct Args
     TfToken entityIds;
     TfToken displayMode;
     short geometryTag;
-    TfToken materialPath;
+    SdfPath materialPath;
 };
 
 /*
@@ -738,8 +738,24 @@ Args GolaemProcedural::GetArgs(
         primvars, golaemTokens->displayMode, result.displayMode);
     GetTypedPrimvar(
         primvars, golaemTokens->geometryTag, result.geometryTag);
-    GetTypedPrimvar(
-        primvars, golaemTokens->materialPath, result.materialPath);
+
+    // a primvar cannot be a relationship, so we convert the
+    // materialPath argument (a token) to an SdfPath, which can be
+    // relative to the procedural prim
+
+    TfToken matpath;
+    GetTypedPrimvar(primvars, golaemTokens->materialPath, matpath);
+
+    if (matpath.IsEmpty()) {
+        result.materialPath = _GetProceduralPrimPath();
+    } else {
+        std::string stdpath = matpath.GetString();
+        if (stdpath.back() == '/') {
+            stdpath.pop_back();
+        }
+        result.materialPath = SdfPath(stdpath)
+            .MakeAbsolutePath(_GetProceduralPrimPath());
+    }
 
     return result;
 }
@@ -1066,20 +1082,6 @@ GolaemProcedural::GenerateMeshes(
     size_t meshCount = outputData._meshAssetNameIndices.size();
     adapters.reserve(meshCount);
 
-    // construct an SdfPath corresponding to the materialPath
-    // argument, which can be relative to the procedural prim
-
-    SdfPath matpath;
-    if (_args.materialPath.IsEmpty()) {
-        matpath = _GetProceduralPrimPath();
-    } else {
-        std::string stdpath = _args.materialPath.GetString();
-        if (stdpath.back() == '/') {
-            stdpath.pop_back();
-        }
-        matpath = SdfPath(stdpath).MakeAbsolutePath(_GetProceduralPrimPath());
-    }
-
     for (size_t imesh = 0; imesh < meshCount; ++imesh) {
 
         // fetch the mesh itself
@@ -1098,7 +1100,7 @@ GolaemProcedural::GenerateMeshes(
             const glm::ShadingGroup& shadingGroup =
                 inputData._character->_shadingGroups[shadingGroupIndex];
             const GlmString& glmname = shadingGroup._name;
-            material = matpath.AppendElementString(
+            material = _args.materialPath.AppendElementString(
                 std::string(glmname.c_str(), glmname.size()));
         }
 
