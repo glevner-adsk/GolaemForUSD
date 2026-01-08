@@ -84,7 +84,7 @@ struct Args
         : entityIds("*"),
           displayMode(golaemTokens->mesh),
           geometryTag(0),
-          materialPath("/Materials")
+          materialPath("Materials")
         {}
 
     VtTokenArray crowdFields;
@@ -610,6 +610,13 @@ public:
             result.primType = HdPrimTypeTokens->mesh;
             const std::shared_ptr<FileMeshAdapter>& adapter =
                 _meshEntities[entityIndex].meshes[meshIndex];
+
+            // TODO: if the prim is not new, it might be more
+            // efficient to edit the previous data source (via
+            // HdContainerDataSourceEditor) than to create a new one
+            // from scratch, because only the points and vertices
+            // change from frame to frame
+
             result.dataSource = HdRetainedContainerDataSource::New(
                 HdMeshSchemaTokens->mesh,
                 adapter->GetMeshDataSource(),
@@ -629,7 +636,7 @@ private:
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
-        int crowdFieldIndex, int entityIndex);
+        int entityIndex);
 
     using _ChildIndexMap = std::unordered_map<SdfPath, size_t, TfHash>;
     using _ChildIndexPairMap =
@@ -991,7 +998,7 @@ void GolaemProcedural::PopulateCrowd(
                 entity.crowdFieldIndex = ifield;
                 entity.entityIndex = ientity;
                 entity.meshes = GenerateMeshes(
-                    cachedSimulation, frame, ifield, ientity);
+                    cachedSimulation, frame, ientity);
             }
         }
     }
@@ -1003,10 +1010,13 @@ void GolaemProcedural::PopulateCrowd(
  */
 std::vector<std::shared_ptr<FileMeshAdapter>>
 GolaemProcedural::GenerateMeshes(
-    CachedSimulation& cachedSimulation, double frame,
-    int /*crowdFieldIndex*/, int entityIndex)
+    CachedSimulation& cachedSimulation, double frame, int entityIndex)
 {
     std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
+
+    // fetch simulation data, frame data and assets, then call
+    // glmPrepareEntityGeometry() to generate information about this
+    // entity at this frame
 
     const GlmSimulationData *simData =
         cachedSimulation.getFinalSimulationData();
@@ -1049,34 +1059,51 @@ GolaemProcedural::GenerateMeshes(
         return adapters;
     }
 
+    // fetch the corresponding character, geometry and mesh count
+
     CrowdGcgCharacter *gcgCharacter = outputData._gcgCharacters[0];
     const GlmGeometryFile& geoFile = gcgCharacter->getGeometry();
+    size_t meshCount = outputData._meshAssetNameIndices.size();
+    adapters.reserve(meshCount);
 
-    const auto& meshIndices = outputData._meshAssetNameIndices;
-    adapters.reserve(meshIndices.size());
+    // construct an SdfPath corresponding to the materialPath
+    // argument, which can be relative to the procedural prim
 
-    for (int imesh = 0; imesh < meshIndices.size(); ++imesh) {
+    SdfPath matpath;
+    if (_args.materialPath.IsEmpty()) {
+        matpath = _GetProceduralPrimPath();
+    } else {
+        std::string stdpath = _args.materialPath.GetString();
+        if (stdpath.back() == '/') {
+            stdpath.pop_back();
+        }
+        matpath = SdfPath(stdpath).MakeAbsolutePath(_GetProceduralPrimPath());
+    }
+
+    for (size_t imesh = 0; imesh < meshCount; ++imesh) {
+
+        // fetch the mesh itself
+
         const GlmFileMeshTransform& meshXform =
             geoFile._transforms[
                 outputData._transformIndicesInGcgFile[imesh]];
         const GlmFileMesh& fileMesh =
             geoFile._meshes[meshXform._meshIndex];
 
+        // append the name of its shading group to the material path
+
         SdfPath material;
         int shadingGroupIndex = outputData._meshShadingGroups[imesh];
         if (shadingGroupIndex >= 0) {
             const glm::ShadingGroup& shadingGroup =
                 inputData._character->_shadingGroups[shadingGroupIndex];
-            std::string matpath(_args.materialPath.data());
-            if (matpath.size() > 0) {
-                if (matpath.back() == '/') {
-                    matpath.pop_back();
-                }
-                SdfPath parent(matpath);
-                material = parent.AppendElementString(
-                    std::string(shadingGroup._name.c_str()));
-            }
+            const GlmString& glmname = shadingGroup._name;
+            material = matpath.AppendElementString(
+                std::string(glmname.c_str(), glmname.size()));
         }
+
+        // construct a FileMeshAdapter to generate Hydra data sources
+        // for the mesh and its material
 
         adapters.emplace_back(
             std::make_shared<FileMeshAdapter>(
