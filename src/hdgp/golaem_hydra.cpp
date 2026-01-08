@@ -543,8 +543,7 @@ public:
                     // including the crowd field, entity and mesh in
                     // the path enables us to tell Hydra that, if the
                     // same prim appears in two successive frames,
-                    // only the primvars (points and normals) will
-                    // have changed
+                    // only the points and normals will have changed
 
                     sprintf_s(buffer, "c%d_%d_%zu",
                             entity.crowdFieldIndex, entity.entityIndex, j);
@@ -554,8 +553,10 @@ public:
 
                     if (previousResult.size() > 0) {
                         outputDirtiedPrims->emplace_back(
-                            childPath,
-                            HdPrimvarsSchema::GetDefaultLocator());
+                            childPath, HdDataSourceLocatorSet({
+                                    HdPrimvarsSchema::GetPointsLocator(),
+                                    HdPrimvarsSchema::GetNormalsLocator()
+                                }));
                     }
                 }
             }
