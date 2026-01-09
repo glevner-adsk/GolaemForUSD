@@ -73,6 +73,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     (renderPercent)
     (displayMode)
     (geometryTag)
+    (dirmap)
     (materialPath)
     (materialAssignMode)
     (bbox)
@@ -109,11 +110,12 @@ struct Args
     VtTokenArray crowdFields;
     TfToken cacheName;
     TfToken cacheDir;
-    VtTokenArray characterFiles;
+    TfToken characterFiles;
     TfToken entityIds;
     float renderPercent;
     TfToken displayMode;
     int geometryTag;
+    TfToken dirmap;
     SdfPath materialPath;
     TfToken materialAssignMode;
 };
@@ -336,7 +338,7 @@ public:
         // normals, UVs and custom primvars
 
         return HdRetainedContainerDataSource::New(
-            dataNames.size(), dataNames.data(), dataSources.data());
+            dataNames.size(), dataNames.cdata(), dataSources.cdata());
     }
 
     HdContainerDataSourceHandle GetMaterialDataSource() const
@@ -532,13 +534,16 @@ public:
         const HdSceneIndexBaseRefPtr &inputScene,
         const ChildPrimTypeMap &previousResult,
         const DependencyMap &/*dirtiedDependencies*/,
-        HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims) override
+        HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
+        override
     {
         // fetch arguments (primvars) the first time only (we assume
         // they never change), then (re)populate the scene
 
         if (_updateCount == 0) {
             _args = GetArgs(inputScene);
+            _dirmapRules = glm::stringToStringArray(
+                _args.dirmap.GetString(), ";");
             InitCrowd(inputScene);
         }
         ++_updateCount;
@@ -696,6 +701,9 @@ private:
     // primvars provided by the procedural prim
     Args _args;
 
+    // parsed dirmap rules for findDirmappedFile()
+    glm::Array<glm::GlmString> _dirmapRules;
+
     // in bbox display mode, maps the path of a Hydra prim to an index
     // into _bboxEntities
     _ChildIndexMap _childIndices;
@@ -781,7 +789,7 @@ Args GolaemProcedural::GetArgs(
         primvars, golaemTokens->cacheName, result.cacheName);
     GetTypedPrimvar(
         primvars, golaemTokens->cacheDir, result.cacheDir);
-    GetTokenArrayPrimvar(
+    GetTypedPrimvar(
         primvars, golaemTokens->characterFiles, result.characterFiles);
     GetTypedPrimvar(
         primvars, golaemTokens->entityIds, result.entityIds);
@@ -791,6 +799,8 @@ Args GolaemProcedural::GetArgs(
         primvars, golaemTokens->displayMode, result.displayMode);
     GetTypedPrimvar(
         primvars, golaemTokens->geometryTag, result.geometryTag);
+    GetTypedPrimvar(
+        primvars, golaemTokens->dirmap, result.dirmap);
     GetTypedPrimvar(
         primvars, golaemTokens->materialAssignMode, result.materialAssignMode);
 
@@ -823,18 +833,25 @@ Args GolaemProcedural::GetArgs(
 void GolaemProcedural::InitCrowd(
     const HdSceneIndexBaseRefPtr& /*inputScene*/)
 {
-    // load characters
-
-    if (!_args.characterFiles.empty()) {
-        GlmString list;
-        for (const TfToken& file: _args.characterFiles) {
-            if (!list.empty()) {
-                list += ";";
-            }
-            list += file.data();
-        }
-        _factory->loadGolaemCharacters(list);
+    if (_args.characterFiles.IsEmpty()) {
+        return;
     }
+
+    // apply dirmap rules to find actual paths of character files
+
+    glm::Array<GlmString> fileList;
+    split(_args.characterFiles.GetString(), ";", fileList);
+
+    for (int i = 0; i < fileList.size(); ++i) {
+        GlmString mappedPath;
+        findDirmappedFile(mappedPath, fileList[i], _dirmapRules);
+        fileList[i] = mappedPath;
+    }
+
+    // load character files
+
+    GlmString characterFiles = glm::stringArrayToString(fileList, ";");
+    _factory->loadGolaemCharacters(characterFiles);
 }
 
 /*
@@ -956,7 +973,11 @@ void GolaemProcedural::PopulateCrowd(
     _bboxEntities.clear();
     _meshEntities.clear();
 
-    glm::IdsFilter entityIdsFilter(_args.entityIds.data());
+    GlmString actualCacheDir;
+    findDirmappedFile(
+        actualCacheDir, _args.cacheDir.GetString(), _dirmapRules);
+
+    glm::IdsFilter entityIdsFilter(_args.entityIds.GetText());
 
     for (int ifield = 0; ifield < _args.crowdFields.size(); ++ifield) {
         TfToken fieldName = _args.crowdFields[ifield];
@@ -966,8 +987,8 @@ void GolaemProcedural::PopulateCrowd(
 
         CachedSimulation& cachedSimulation =
             _factory->getCachedSimulation(
-                _args.cacheDir.data(), _args.cacheName.data(),
-                fieldName.data());
+                actualCacheDir.c_str(), _args.cacheName.GetText(),
+                fieldName.GetText());
 
         const GlmSimulationData *simData =
             cachedSimulation.getFinalSimulationData();
@@ -1224,6 +1245,7 @@ GolaemProcedural::GenerateMeshes(
     inputData._entityId = simData->_entityIds[entityIndex];
     inputData._frames.assign(1, frame);
     inputData._frameDatas.assign(1, frameData);
+    inputData._dirMapRules = _dirmapRules;
     inputData._geometryTag = short(_args.geometryTag);
     inputData._geoFileIndex = 0;
 
