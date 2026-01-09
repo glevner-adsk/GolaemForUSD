@@ -112,7 +112,7 @@ struct Args
     TfToken entityIds;
     float renderPercent;
     TfToken displayMode;
-    short geometryTag;
+    int geometryTag;
     SdfPath materialPath;
     TfToken materialAssignMode;
 };
@@ -1038,7 +1038,8 @@ void GolaemProcedural::PopulateCrowd(
                 glm::Vector3 extent;
 #if 0
                 const glm::GeometryAsset *geoAsset =
-                    character->getGeometryAssetFirstLOD(_args.geometryTag);
+                    character->getGeometryAssetFirstLOD(
+                        short(_args.geometryTag));
                 if (geoAsset) {
                     extent = geoAsset->_halfExtentsYUp;
                 } else {
@@ -1201,7 +1202,7 @@ GolaemProcedural::GenerateMeshes(
     inputData._entityId = simData->_entityIds[entityIndex];
     inputData._frames.assign(1, frame);
     inputData._frameDatas.assign(1, frameData);
-    inputData._geometryTag = _args.geometryTag;
+    inputData._geometryTag = short(_args.geometryTag);
     inputData._geoFileIndex = 0;
 
     glm::crowdio::OutputEntityGeoData outputData;
