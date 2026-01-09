@@ -34,6 +34,7 @@
 #include "glmUSD.h"
 
 #include <cassert>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -68,6 +69,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     (cacheDir)
     (characterFiles)
     (entityIds)
+    (renderPercent)
     (displayMode)
     (geometryTag)
     (materialPath)
@@ -96,6 +98,7 @@ struct Args
 {
     Args()
         : entityIds("*"),
+          renderPercent(100),
           displayMode(golaemTokens->mesh),
           geometryTag(0),
           materialPath("Materials"),
@@ -107,6 +110,7 @@ struct Args
     TfToken cacheDir;
     VtTokenArray characterFiles;
     TfToken entityIds;
+    float renderPercent;
     TfToken displayMode;
     short geometryTag;
     SdfPath materialPath;
@@ -781,6 +785,8 @@ Args GolaemProcedural::GetArgs(
     GetTypedPrimvar(
         primvars, golaemTokens->entityIds, result.entityIds);
     GetTypedPrimvar(
+        primvars, golaemTokens->renderPercent, result.renderPercent);
+    GetTypedPrimvar(
         primvars, golaemTokens->displayMode, result.displayMode);
     GetTypedPrimvar(
         primvars, golaemTokens->geometryTag, result.geometryTag);
@@ -977,15 +983,18 @@ void GolaemProcedural::PopulateCrowd(
             continue;
         }
 
+        int entityCount = simData->_entityCount;
+        if (_args.renderPercent < 100.0f) {
+            entityCount =
+                std::lround(entityCount * _args.renderPercent * 0.01f);
+        }
         if (_args.displayMode == golaemTokens->bbox) {
-            _bboxEntities.reserve(
-                _bboxEntities.size() + simData->_entityCount);
+            _bboxEntities.reserve(_bboxEntities.size() + entityCount);
         } else {
-            _meshEntities.reserve(
-                _meshEntities.size() + simData->_entityCount);
+            _meshEntities.reserve(_meshEntities.size() + entityCount);
         }
 
-        for (uint32_t ientity = 0; ientity < simData->_entityCount; ++ientity) {
+        for (int ientity = 0; ientity < entityCount; ++ientity) {
 
             // do nothing if the entity has been killed or excluded
 
