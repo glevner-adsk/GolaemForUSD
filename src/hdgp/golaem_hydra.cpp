@@ -1,6 +1,5 @@
 /*
  * TODO:
- * - shader and PP attributes
  * - material assignment by surface shader
  * - layout file support
  * - LODs
@@ -46,6 +45,8 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 using glm::GlmString;
 using glm::GolaemCharacter;
+using glm::PODArray;
+using glm::ShaderAssetDataContainer;
 using glm::crowdio::CachedSimulation;
 using glm::crowdio::CrowdGcgCharacter;
 using glm::crowdio::GlmFileMesh;
@@ -76,6 +77,15 @@ TF_DEFINE_PRIVATE_TOKENS(
 );
 
 /*
+ * We use a hash map to store an entity's custom primvars (name and
+ * data source for each), which are generated from shader attributes
+ * and PP attributes.
+ */
+using PrimvarDataSourceMap =
+    TfDenseHashMap<TfToken, HdSampledDataSourceHandle, TfHash>;
+using PrimvarDataSourceMapRef = std::shared_ptr<PrimvarDataSourceMap>;
+
+/*
  * Arguments (primvars) provided by the USD prim.
  */
 struct Args
@@ -100,7 +110,8 @@ struct Args
 /*
  * Class which provides Hydra data sources wrapping the topology found
  * in a GlmFileMesh, as well as the deformed vertices and normals at
- * any given frame.
+ * any given frame, plus UVs and any other custom attributes (shader
+ * and PP).
  */
 class FileMeshAdapter
 {
@@ -117,14 +128,16 @@ public:
         const GlmFileMesh& fileMesh,
         const glm::Array<glm::Vector3>& deformedVertices,
         const glm::Array<glm::Vector3>& deformedNormals,
-        const SdfPath& material)
+        const SdfPath& material,
+        PrimvarDataSourceMapRef customPrimvars)
         : _vertexCounts(fileMesh._polygonCount),
           _vertexIndices(fileMesh._polygonsTotalVertexCount),
           _vertices(fileMesh._vertexCount),
           _normals(fileMesh._normalCount),
           _normalMode(GlmNormalMode(fileMesh._normalMode)),
           _uvMode(GlmUVMode(fileMesh._uvMode)),
-          _material(material)
+          _material(material),
+          _customPrimvars(customPrimvars)
     {
         assert(deformedVertices.size() == _vertices.size());
         assert(deformedNormals.size() == _normals.size());
@@ -190,9 +203,14 @@ public:
     {
         VtTokenArray dataNames;
         VtArray<HdDataSourceBaseHandle> dataSources;
+        size_t capacity = 3;  // points, normals and UVs
 
-        dataNames.reserve(3);
-        dataSources.reserve(3);
+        if (_customPrimvars) {
+            capacity += _customPrimvars->size();
+        }
+        
+        dataNames.reserve(capacity);
+        dataSources.reserve(capacity);
 
         // vertex data source
 
@@ -288,8 +306,23 @@ public:
             dataSources.push_back(uvBuilder.Build());
         }
 
+        // custom primvars
+
+        if (_customPrimvars) {
+            for (auto it: *_customPrimvars) {
+                dataNames.push_back(it.first);
+                dataSources.push_back(
+                    HdPrimvarSchema::Builder()
+                    .SetPrimvarValue(it.second)
+                    .SetInterpolation(
+                        HdPrimvarSchema::BuildInterpolationDataSource(
+                            HdPrimvarSchemaTokens->constant))
+                    .Build());
+            }
+        }
+
         // the final primvars data source contains the vertices,
-        // normals and UVs
+        // normals, UVs and custom primvars
 
         return HdRetainedContainerDataSource::New(
             dataNames.size(), dataNames.data(), dataSources.data());
@@ -321,6 +354,7 @@ private:
     GlmUVMode _uvMode;
     VtVec2fArray _uvs;
     SdfPath _material;
+    const PrimvarDataSourceMapRef _customPrimvars;
 };
 
 /*
@@ -637,6 +671,12 @@ private:
     std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
         int entityIndex);
+    PrimvarDataSourceMapRef GenerateCustomPrimvars(
+        const GlmSimulationData *simData,
+        const GlmFrameData *frameData,
+        const ShaderAssetDataContainer* shaderData,
+        const GolaemCharacter *character,
+        int entityIndex) const;
 
     using _ChildIndexMap = std::unordered_map<SdfPath, size_t, TfHash>;
     using _ChildIndexPairMap =
@@ -1021,6 +1061,94 @@ void GolaemProcedural::PopulateCrowd(
 }
 
 /*
+ * Finds all the shader and PP attributes defined for the given entity
+ * and generates a Hydra data source of the appropriate type for each.
+ * Returns a shared points to a hash map containing the name and data
+ * source for each. Pass that hash map to GenerateMeshes() so that
+ * each of the mesh's entities shares them.
+ */
+PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
+    const GlmSimulationData *simData,
+    const GlmFrameData *frameData,
+    const ShaderAssetDataContainer* shaderData,
+    const GolaemCharacter *character,
+    int entityIndex) const
+{
+    PrimvarDataSourceMapRef dataSources =
+        std::make_shared<PrimvarDataSourceMap>();
+
+    size_t shaderAttrCount = character->_shaderAttributes.size();
+    size_t totalCount = shaderAttrCount
+        + simData->_ppFloatAttributeCount
+        + simData->_ppVectorAttributeCount;
+
+    if (totalCount == 0) {
+        return dataSources;
+    }
+
+    dataSources->reserve(totalCount);
+
+    auto characterIndex = simData->_characterIdx[entityIndex];
+    auto bakeIndex = simData->_entityToBakeIndex[entityIndex];
+
+    // shader attributes (int, float, string, vector)
+
+    const PODArray<int>& intData = shaderData->intData[entityIndex];
+    const PODArray<float>& floatData = shaderData->floatData[entityIndex];
+    const glm::Array<glm::Vector3>& vectorData = shaderData->vectorData[entityIndex];
+    const glm::Array<GlmString>& stringData = shaderData->stringData[entityIndex];
+
+    const PODArray<size_t>& globalToSpecificShaderAttrIdx =
+        shaderData->globalToSpecificShaderAttrIdxPerChar[characterIndex];
+
+    for (size_t i = 0; i < shaderAttrCount; ++i) {
+        const glm::ShaderAttribute& attr = character->_shaderAttributes[i];
+        TfToken name(attr._name.c_str());
+        size_t index = globalToSpecificShaderAttrIdx[i];
+        switch (attr._type) {
+        case glm::ShaderAttributeType::INT:
+            (*dataSources)[name] =
+                HdRetainedTypedSampledDataSource<int>::New(
+                    intData[index]);
+            break;
+        case glm::ShaderAttributeType::FLOAT:
+            (*dataSources)[name] =
+                HdRetainedTypedSampledDataSource<float>::New(
+                    floatData[index]);
+            break;
+        case glm::ShaderAttributeType::STRING:
+            (*dataSources)[name] =
+                HdRetainedTypedSampledDataSource<TfToken>::New(
+                    TfToken(stringData[index].c_str()));
+            break;
+        case glm::ShaderAttributeType::VECTOR:
+            (*dataSources)[name] =
+                HdRetainedTypedSampledDataSource<GfVec3f>::New(
+                    GfVec3f(vectorData[index].getFloatValues()));
+            break;
+        }
+    }
+
+    // PP attributes (float and vector)
+
+    for (size_t i = 0; i < simData->_ppFloatAttributeCount; ++i) {
+        TfToken name(simData->_ppFloatAttributeNames[i]);
+        (*dataSources)[name] =
+            HdRetainedTypedSampledDataSource<float>::New(
+                frameData->_ppFloatAttributeData[i][bakeIndex]);
+    }
+
+    for (size_t i = 0; i < simData->_ppVectorAttributeCount; ++i) {
+        TfToken name(simData->_ppVectorAttributeNames[i]);
+        (*dataSources)[name] =
+            HdRetainedTypedSampledDataSource<GfVec3f>::New(
+                GfVec3f(frameData->_ppVectorAttributeData[i][bakeIndex]));
+    }
+
+    return dataSources;
+}
+
+/*
  * Generates and returns a FileMeshAdapter for each mesh constituting
  * the given entity at the given frame.
  */
@@ -1075,6 +1203,15 @@ GolaemProcedural::GenerateMeshes(
         return adapters;
     }
 
+    // fetch custom primvars for this entity: shader attributes and PP
+    // attributes
+
+    const ShaderAssetDataContainer* shaderData =
+        cachedSimulation.getFinalShaderData(frame, UINT32_MAX, true);
+
+    PrimvarDataSourceMapRef customPrimvars = GenerateCustomPrimvars(
+        simData, frameData, shaderData, character, entityIndex);
+
     // fetch the corresponding character, geometry and mesh count
 
     CrowdGcgCharacter *gcgCharacter = outputData._gcgCharacters[0];
@@ -1112,7 +1249,7 @@ GolaemProcedural::GenerateMeshes(
                 fileMesh,
                 outputData._deformedVertices[0][imesh],
                 outputData._deformedNormals[0][imesh],
-                material));
+                material, customPrimvars));
     }
 
     return adapters;
