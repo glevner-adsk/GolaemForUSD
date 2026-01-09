@@ -1,7 +1,7 @@
 /*
  * TODO:
- * - material assignment by surface shader
  * - layout file support
+ * - skeleton display mode
  * - LODs
  * - motion blur
  * - FBX support
@@ -71,9 +71,13 @@ TF_DEFINE_PRIVATE_TOKENS(
     (displayMode)
     (geometryTag)
     (materialPath)
+    (materialAssignMode)
     (bbox)
     (mesh)
     (st)
+    (bySurfaceShader)
+    (byShadingGroup)
+    (none)
 );
 
 /*
@@ -94,7 +98,8 @@ struct Args
         : entityIds("*"),
           displayMode(golaemTokens->mesh),
           geometryTag(0),
-          materialPath("Materials")
+          materialPath("Materials"),
+          materialAssignMode(golaemTokens->byShadingGroup)
         {}
 
     VtTokenArray crowdFields;
@@ -105,6 +110,7 @@ struct Args
     TfToken displayMode;
     short geometryTag;
     SdfPath materialPath;
+    TfToken materialAssignMode;
 };
 
 /*
@@ -778,6 +784,8 @@ Args GolaemProcedural::GetArgs(
         primvars, golaemTokens->displayMode, result.displayMode);
     GetTypedPrimvar(
         primvars, golaemTokens->geometryTag, result.geometryTag);
+    GetTypedPrimvar(
+        primvars, golaemTokens->materialAssignMode, result.materialAssignMode);
 
     // a primvar cannot be a relationship, so we convert the
     // materialPath argument (a token) to an SdfPath, which can be
@@ -1229,16 +1237,40 @@ GolaemProcedural::GenerateMeshes(
         const GlmFileMesh& fileMesh =
             geoFile._meshes[meshXform._meshIndex];
 
-        // append the name of its shading group to the material path
+        // append the name of its material to the material path
 
         SdfPath material;
-        int shadingGroupIndex = outputData._meshShadingGroups[imesh];
-        if (shadingGroupIndex >= 0) {
-            const glm::ShadingGroup& shadingGroup =
-                inputData._character->_shadingGroups[shadingGroupIndex];
-            const GlmString& glmname = shadingGroup._name;
-            material = _args.materialPath.AppendElementString(
-                std::string(glmname.c_str(), glmname.size()));
+        int shGroupIndex = outputData._meshShadingGroups[imesh];
+
+        if (_args.materialAssignMode != golaemTokens->none
+            && shGroupIndex >= 0) {
+            const glm::ShadingGroup& shGroup =
+                inputData._character->_shadingGroups[shGroupIndex];
+            std::string matname;
+
+            // assign material by shading group
+
+            if (_args.materialAssignMode == golaemTokens->byShadingGroup) {
+                const GlmString& glmname = shGroup._name;
+                matname.assign(glmname.c_str(), glmname.size());
+            }
+
+            // assign material by surface shader
+
+            else {
+                int shAssetIndex =
+                    character->findShaderAsset(shGroup, "surface");
+                if (shAssetIndex >= 0) {
+                    const GlmString& glmname =
+                        character->_shaderAssets[shAssetIndex]._name;
+                    matname.assign(glmname.c_str(), glmname.size());
+                } else {
+                    matname = "DefaultGolaemMat";
+                }
+            }
+
+            material =
+                _args.materialPath.AppendElementString(matname);
         }
 
         // construct a FileMeshAdapter to generate Hydra data sources
