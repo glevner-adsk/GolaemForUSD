@@ -27,6 +27,7 @@
 #include "pxr/base/tf/staticTokens.h"
 
 #include <glmCrowdGcgCharacter.h>
+#include <glmCrowdIOUtils.h>
 #include <glmGolaemCharacter.h>
 #include <glmIdsFilter.h>
 #include <glmSimulationCacheFactory.h>
@@ -1121,7 +1122,26 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 
     for (size_t i = 0; i < shaderAttrCount; ++i) {
         const glm::ShaderAttribute& attr = character->_shaderAttributes[i];
-        TfToken name(attr._name.c_str());
+
+        // ensure the attribute name is a valid identifier, and maybe
+        // prefix it with "arnold:"
+
+        std::string stdname;
+        GlmString glmname = attr._name.c_str();
+        GlmString subAttrName;
+        glm::crowdio::RendererAttributeType::Value overrideType =
+            glm::crowdio::RendererAttributeType::END;
+        if (glm::crowdio::parseRendererAttribute(
+                "arnold", attr._name, glmname, subAttrName,
+                overrideType)) {
+            stdname = "arnold:" + TfMakeValidIdentifier(glmname.c_str());
+        } else {
+            stdname = TfMakeValidIdentifier(glmname.c_str());
+        }
+        TfToken name(stdname);
+
+        // create a data source that returns the attribute's value
+
         size_t index = globalToSpecificShaderAttrIdx[i];
         switch (attr._type) {
         case glm::ShaderAttributeType::INT:
@@ -1150,14 +1170,16 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
     // PP attributes (float and vector)
 
     for (size_t i = 0; i < simData->_ppFloatAttributeCount; ++i) {
-        TfToken name(simData->_ppFloatAttributeNames[i]);
+        TfToken name(
+            TfMakeValidIdentifier(simData->_ppFloatAttributeNames[i]));
         (*dataSources)[name] =
             HdRetainedTypedSampledDataSource<float>::New(
                 frameData->_ppFloatAttributeData[i][bakeIndex]);
     }
 
     for (size_t i = 0; i < simData->_ppVectorAttributeCount; ++i) {
-        TfToken name(simData->_ppVectorAttributeNames[i]);
+        TfToken name(
+            TfMakeValidIdentifier(simData->_ppVectorAttributeNames[i]));
         (*dataSources)[name] =
             HdRetainedTypedSampledDataSource<GfVec3f>::New(
                 GfVec3f(frameData->_ppVectorAttributeData[i][bakeIndex]));
