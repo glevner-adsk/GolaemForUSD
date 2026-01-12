@@ -29,7 +29,7 @@ FileMeshAdapter::FileMeshAdapter(
     const glm::crowdio::GlmFileMesh& fileMesh,
     const glm::Array<glm::Vector3>& deformedVertices,
     const glm::Array<glm::Vector3>& deformedNormals,
-    const SdfPath& material, PrimvarDSMapRef customPrimvars)
+    const SdfPath& material, const PrimvarDSMapRef& customPrimvars)
     : _vertexCounts(fileMesh._polygonCount),
       _vertexIndices(fileMesh._polygonsTotalVertexCount),
       _vertices(fileMesh._vertexCount),
