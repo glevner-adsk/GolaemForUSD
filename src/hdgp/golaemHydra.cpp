@@ -223,10 +223,10 @@ private:
     int _updateCount;
 
     // the definition of each displayed entity in bbox display mode
-    VtArray<BBoxEntityData> _bboxEntities;
+    std::vector<BBoxEntityData> _bboxEntities;
 
     // the definition of each displayed entity in mesh display mode
-    VtArray<MeshEntityData> _meshEntities;
+    std::vector<MeshEntityData> _meshEntities;
 };
 
 /*
@@ -607,7 +607,7 @@ void GolaemProcedural::PopulateCrowd(
 /*
  * Finds all the shader and PP attributes defined for the given entity
  * and generates a Hydra data source of the appropriate type for each.
- * Returns a shared points to a hash map containing the name and data
+ * Returns a shared pointer to a hash map containing the name and data
  * source for each. Pass that hash map to GenerateMeshes() so that
  * each of the mesh's entities shares them.
  */
