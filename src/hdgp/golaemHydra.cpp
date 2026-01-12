@@ -6,25 +6,23 @@
  * - motion blur
  * - FBX support
  */
-#include "pxr/imaging/hdGp/generativeProceduralPlugin.h"
-#include "pxr/imaging/hdGp/generativeProceduralPluginRegistry.h"
+#include <pxr/imaging/hdGp/generativeProceduralPlugin.h>
+#include <pxr/imaging/hdGp/generativeProceduralPluginRegistry.h>
 
-#include "pxr/imaging/hd/cameraSchema.h"
-#include "pxr/imaging/hd/materialBindingsSchema.h"
-#include "pxr/imaging/hd/meshSchema.h"
-#include "pxr/imaging/hd/meshTopologySchema.h"
-#include "pxr/imaging/hd/primvarsSchema.h"
-#include "pxr/imaging/hd/renderSettingsSchema.h"
-#include "pxr/imaging/hd/retainedDataSource.h"
-#include "pxr/imaging/hd/sceneGlobalsSchema.h"
-#include "pxr/imaging/hd/tokens.h"
-#include "pxr/imaging/hd/xformSchema.h"
+#include <pxr/imaging/hd/cameraSchema.h>
+#include <pxr/imaging/hd/materialBindingsSchema.h>
+#include <pxr/imaging/hd/meshSchema.h>
+#include <pxr/imaging/hd/meshTopologySchema.h>
+#include <pxr/imaging/hd/primvarsSchema.h>
+#include <pxr/imaging/hd/renderSettingsSchema.h>
+#include <pxr/imaging/hd/retainedDataSource.h>
+#include <pxr/imaging/hd/sceneGlobalsSchema.h>
+#include <pxr/imaging/hd/tokens.h>
+#include <pxr/imaging/hd/xformSchema.h>
 
-#include "pxr/usd/usdGeom/tokens.h"
-
-#include "pxr/base/gf/quatf.h"
-#include "pxr/base/gf/rotation.h"
-#include "pxr/base/tf/staticTokens.h"
+#include <pxr/base/gf/quatf.h>
+#include <pxr/base/gf/rotation.h>
+#include <pxr/base/tf/staticTokens.h>
 
 #include <glmCrowdGcgCharacter.h>
 #include <glmCrowdIOUtils.h>
@@ -32,9 +30,10 @@
 #include <glmIdsFilter.h>
 #include <glmSimulationCacheFactory.h>
 #include <glmSimulationCacheFactorySimulation.h>
-#include "glmUSD.h"
 
-#include <cassert>
+#include "glmUSD.h"
+#include "fileMeshAdapter.h"
+
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -49,6 +48,8 @@ using glm::GlmString;
 using glm::GolaemCharacter;
 using glm::PODArray;
 using glm::ShaderAssetDataContainer;
+using glm::ShaderAttribute;
+using glm::ShaderAttributeType;
 using glm::crowdio::CachedSimulation;
 using glm::crowdio::CrowdGcgCharacter;
 using glm::crowdio::GlmFileMesh;
@@ -59,6 +60,8 @@ using glm::crowdio::GlmNormalMode;
 using glm::crowdio::GlmSimulationData;
 using glm::crowdio::GlmUVMode;
 using glm::crowdio::SimulationCacheFactory;
+
+using glmHydra::FileMeshAdapter;
 
 namespace
 {
@@ -78,7 +81,6 @@ TF_DEFINE_PRIVATE_TOKENS(
     (materialAssignMode)
     (bbox)
     (mesh)
-    (st)
     (bySurfaceShader)
     (byShadingGroup)
     (none)
@@ -121,256 +123,6 @@ struct Args
 };
 
 /*
- * Class which provides Hydra data sources wrapping the topology found
- * in a GlmFileMesh, as well as the deformed vertices and normals at
- * any given frame, plus UVs and any other custom attributes (shader
- * and PP).
- */
-class FileMeshAdapter
-{
-    using IntArrayDS = HdRetainedTypedSampledDataSource<VtIntArray>;
-    using Vec3fArrayDS = HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
-    using Vec2fArrayDS = HdRetainedTypedSampledDataSource<VtArray<GfVec2f>>;
-
-public:
-    /*
-     * The FileMeshAdapter constructor makes copies of all the data it
-     * needs, so all the arguments can be deleted afterwards.
-     */
-    FileMeshAdapter(
-        const GlmFileMesh& fileMesh,
-        const glm::Array<glm::Vector3>& deformedVertices,
-        const glm::Array<glm::Vector3>& deformedNormals,
-        const SdfPath& material,
-        PrimvarDataSourceMapRef customPrimvars)
-        : _vertexCounts(fileMesh._polygonCount),
-          _vertexIndices(fileMesh._polygonsTotalVertexCount),
-          _vertices(fileMesh._vertexCount),
-          _normals(fileMesh._normalCount),
-          _normalMode(GlmNormalMode(fileMesh._normalMode)),
-          _uvMode(GlmUVMode(fileMesh._uvMode)),
-          _material(material),
-          _customPrimvars(customPrimvars)
-    {
-        assert(deformedVertices.size() == _vertices.size());
-        assert(deformedNormals.size() == _normals.size());
-
-        for (int i = 0; i < _vertexCounts.size(); ++i) {
-            _vertexCounts[i] = fileMesh._polygonsVertexCount[i];
-        }
-
-        for (int i = 0; i < _vertexIndices.size(); ++i) {
-            _vertexIndices[i] = fileMesh._polygonsVertexIndices[i];
-        }
-
-        for (int i = 0; i < _vertices.size(); ++i) {
-            _vertices[i].Set(deformedVertices[i].getFloatValues());
-        }
-
-        if (_normals.size() > 0) {
-            if (_normalMode ==
-                glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
-                _normalIndices.resize(fileMesh._polygonsTotalVertexCount);
-                for (int i = 0; i < _normalIndices.size(); ++i) {
-                    _normalIndices[i] = fileMesh._polygonsNormalIndices[i];
-                }
-            }
-            for (int i = 0; i < _normals.size(); ++i) {
-                _normals[i].Set(deformedNormals[i].getFloatValues());
-            }
-        }
-
-        // note that if there are multiple UV sets, we only take the
-        // first; the others are ignored
-
-        if (fileMesh._uvSetCount > 0 && fileMesh._uvCoordCount[0] > 0) {
-            _uvs.resize(fileMesh._uvCoordCount[0]);
-            if (_uvMode ==
-                glm::crowdio::GLM_UV_PER_POLYGON_VERTEX_INDEXED) {
-                _uvIndices.resize(fileMesh._polygonsTotalVertexCount);
-                for (int i = 0; i < _uvIndices.size(); ++i) {
-                    _uvIndices[i] = fileMesh._polygonsUVIndices[i];
-                }
-            }
-            for (int i = 0; i < _uvs.size(); ++i) {
-                _uvs[i].Set(fileMesh._us[0][i], fileMesh._vs[0][i]);
-            }
-        }
-    }
-
-    HdContainerDataSourceHandle GetMeshDataSource() const
-    {
-        return HdMeshSchema::Builder()
-            .SetTopology(
-                HdMeshTopologySchema::Builder()
-                .SetFaceVertexCounts(IntArrayDS::New(_vertexCounts))
-                .SetFaceVertexIndices(IntArrayDS::New(_vertexIndices))
-                .Build())
-            .SetSubdivisionScheme(
-                HdRetainedTypedSampledDataSource<TfToken>::New(
-                    UsdGeomTokens->none))
-            .Build();
-    }
-
-    HdContainerDataSourceHandle GetPrimvarsDataSource() const
-    {
-        VtTokenArray dataNames;
-        VtArray<HdDataSourceBaseHandle> dataSources;
-        size_t capacity = 3;  // points, normals and UVs
-
-        if (_customPrimvars) {
-            capacity += _customPrimvars->size();
-        }
-        
-        dataNames.reserve(capacity);
-        dataSources.reserve(capacity);
-
-        // vertex data source
-
-        HdContainerDataSourceHandle vertexDataSource =
-            HdPrimvarSchema::Builder()
-            .SetPrimvarValue(Vec3fArrayDS::New(_vertices))
-            .SetInterpolation(
-                HdPrimvarSchema::BuildInterpolationDataSource(
-                    HdPrimvarSchemaTokens->vertex))
-            .SetRole(
-                HdPrimvarSchema::BuildRoleDataSource(
-                    HdPrimvarSchemaTokens->point))
-            .Build();
-
-        dataNames.push_back(HdPrimvarsSchemaTokens->points);
-        dataSources.push_back(vertexDataSource);
-
-        // normal data source, if the mesh contains normals
-
-        HdContainerDataSourceHandle normalDataSource;
-
-        if (_normals.size() > 0) {
-            HdPrimvarSchema::Builder normalBuilder;
-
-            // normals may or may not be indexed
-
-            if (_normalMode ==
-                glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
-                normalBuilder.SetIndexedPrimvarValue(Vec3fArrayDS::New(_normals));
-                normalBuilder.SetIndices(IntArrayDS::New(_normalIndices));
-            } else {
-                normalBuilder.SetPrimvarValue(Vec3fArrayDS::New(_normals));
-            }
-
-            // normals may or may not be shared by polygons using the
-            // same vertices
-
-            if (_normalMode ==
-                glm::crowdio::GLM_NORMAL_PER_CONTROL_POINT) {
-                normalBuilder.SetInterpolation(
-                    HdPrimvarSchema::BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->vertex));
-            } else {
-                normalBuilder.SetInterpolation(
-                    HdPrimvarSchema::BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->faceVarying));
-            }
-
-            normalBuilder.SetRole(
-                HdPrimvarSchema::BuildRoleDataSource(
-                    HdPrimvarSchemaTokens->normal));
-
-            dataNames.push_back(HdPrimvarsSchemaTokens->normals);
-            dataSources.push_back(normalBuilder.Build());
-        }
-
-        // UV data source, if the mesh contains UVs
-
-        HdContainerDataSourceHandle uvDataSource;
-
-        if (_uvs.size() > 0) {
-            HdPrimvarSchema::Builder uvBuilder;
-
-            // UVs may or may not be indexed
-
-            if (_uvMode ==
-                glm::crowdio::GLM_UV_PER_POLYGON_VERTEX_INDEXED) {
-                uvBuilder.SetIndexedPrimvarValue(Vec2fArrayDS::New(_uvs));
-                uvBuilder.SetIndices(IntArrayDS::New(_uvIndices));
-            } else {
-                uvBuilder.SetPrimvarValue(Vec2fArrayDS::New(_uvs));
-            }
-
-            // uvs may or may not be shared by polygons using the same
-            // vertices
-
-            if (_uvMode ==
-                glm::crowdio::GLM_UV_PER_CONTROL_POINT) {
-                uvBuilder.SetInterpolation(
-                    HdPrimvarSchema::BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->vertex));
-            } else {
-                uvBuilder.SetInterpolation(
-                    HdPrimvarSchema::BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->faceVarying));
-            }
-
-            uvBuilder.SetRole(
-                HdPrimvarSchema::BuildRoleDataSource(
-                    HdPrimvarSchemaTokens->textureCoordinate));
-
-            dataNames.push_back(golaemTokens->st);
-            dataSources.push_back(uvBuilder.Build());
-        }
-
-        // custom primvars
-
-        if (_customPrimvars) {
-            for (auto it: *_customPrimvars) {
-                dataNames.push_back(it.first);
-                dataSources.push_back(
-                    HdPrimvarSchema::Builder()
-                    .SetPrimvarValue(it.second)
-                    .SetInterpolation(
-                        HdPrimvarSchema::BuildInterpolationDataSource(
-                            HdPrimvarSchemaTokens->constant))
-                    .Build());
-            }
-        }
-
-        // the final primvars data source contains the vertices,
-        // normals, UVs and custom primvars
-
-        return HdRetainedContainerDataSource::New(
-            dataNames.size(), dataNames.cdata(), dataSources.cdata());
-    }
-
-    HdContainerDataSourceHandle GetMaterialDataSource() const
-    {
-        if (_material.IsEmpty()) {
-            return HdContainerDataSourceHandle();
-        }
-
-        return HdRetainedContainerDataSource::New(
-            HdMaterialBindingsSchemaTokens->allPurpose,
-            HdMaterialBindingSchema::Builder()
-            .SetPath(
-                HdRetainedTypedSampledDataSource<SdfPath>::New(
-                    _material))
-            .Build());
-    }
-
-private:
-    VtIntArray _vertexCounts;
-    VtIntArray _vertexIndices;
-    VtVec3fArray _vertices;
-    VtIntArray _normalIndices;
-    GlmNormalMode _normalMode;
-    VtVec3fArray _normals;
-    VtIntArray _uvIndices;
-    GlmUVMode _uvMode;
-    VtVec2fArray _uvs;
-    SdfPath _material;
-    const PrimvarDataSourceMapRef _customPrimvars;
-};
-
-/*
  * Information needed by the renderer for each entity in bbox display
  * mode.
  */
@@ -394,72 +146,8 @@ struct MeshEntityData
 };
 
 /*
- * Creates a data source which returns the topology of a cube.
+ * This is the actual plugin implementation.
  */
-HdContainerDataSourceHandle GetCubeMeshDataSource()
-{
-    static const VtIntArray faceVertexCounts =
-        {4, 4, 4, 4, 4, 4};
-
-    static const VtIntArray faceVertexIndices =
-        {0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1,
-            7, 5, 3, 6, 0, 2, 4};
-
-    using _IntArrayDs =
-        HdRetainedTypedSampledDataSource<VtIntArray>;
-
-    static const _IntArrayDs::Handle fvcDs =
-        _IntArrayDs::New(faceVertexCounts);
-
-    static const _IntArrayDs::Handle fviDs =
-        _IntArrayDs::New(faceVertexIndices);
-
-    static const HdContainerDataSourceHandle meshDs =
-        HdMeshSchema::Builder()
-            .SetTopology(HdMeshTopologySchema::Builder()
-                .SetFaceVertexCounts(fvcDs)
-                .SetFaceVertexIndices(fviDs)
-                .Build())
-            .Build();
-
-    return meshDs;
-}
-
-/*
- * Creates a data source which returns the vertices of a cube.
- */
-HdContainerDataSourceHandle GetCubePrimvarsDataSource()
-{
-    static const VtArray<GfVec3f> points = {
-        {-1.0f, -1.0f, 1.0f},
-        {1.0f, -1.0f, 1.0f},
-        {-1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f},
-        {-1.0f, 1.0f, -1.0f},
-        {1.0f, 1.0f, -1.0f},
-        {-1.0f, -1.0f, -1.0f},
-        {1.0f, -1.0f, -1.0f}};
-
-    using _PointArrayDs =
-        HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
-
-    static const HdContainerDataSourceHandle primvarsDs =
-        HdRetainedContainerDataSource::New(
-            HdPrimvarsSchemaTokens->points,
-            HdPrimvarSchema::Builder()
-                .SetPrimvarValue(_PointArrayDs::New(points))
-                .SetInterpolation(HdPrimvarSchema::
-                    BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->vertex))
-                .SetRole(HdPrimvarSchema::
-                    BuildRoleDataSource(
-                        HdPrimvarSchemaTokens->point))
-                .Build()
-        );
-
-    return primvarsDs;
-}
-
 class GolaemProcedural: public HdGpGenerativeProcedural
 {
 public:
@@ -482,205 +170,20 @@ public:
     }
 
     DependencyMap UpdateDependencies(
-        const HdSceneIndexBaseRefPtr &inputScene) override
-    {
-        DependencyMap result;
-
-        // call Update() when the current frame or the render settings
-        // (for motion blur) change
-
-        result[HdSceneGlobalsSchema::GetDefaultPrimPath()] = {
-            HdSceneGlobalsSchema::GetCurrentFrameLocator(),
-            HdSceneGlobalsSchema::GetActiveRenderSettingsPrimLocator(),
-        };
-
-        // call Update() when the motion blur shutter interval
-        // changes: if there is an active render settings prim, get
-        // the shutter interval from there, otherwise look for a
-        // primary camera and use its shutter settings
-
-        const HdSceneGlobalsSchema globals =
-            HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
-
-        if (globals) {
-            HdPathDataSourceHandle rsPrimDS =
-                globals.GetActiveRenderSettingsPrim();
-            if (rsPrimDS) {
-                const SdfPath rsPath = rsPrimDS->GetTypedValue(0);
-                if (!rsPath.IsEmpty()) {
-                    result[rsPath] = {
-                        HdRenderSettingsSchema::GetShutterIntervalLocator()
-                    };
-                }
-            } else {
-                HdPathDataSourceHandle camPathDS =
-                    globals.GetPrimaryCameraPrim();
-                if (camPathDS) {
-                    const SdfPath camPath = camPathDS->GetTypedValue(0);
-                    if (!camPath.IsEmpty()) {
-                        result[camPath] = {
-                            HdCameraSchema::GetShutterOpenLocator(),
-                            HdCameraSchema::GetShutterCloseLocator()
-                        };
-                    }
-                }
-            }
-        }
-
-        return result;
-    }
+        const HdSceneIndexBaseRefPtr &inputScene) override;
 
     ChildPrimTypeMap Update(
         const HdSceneIndexBaseRefPtr &inputScene,
         const ChildPrimTypeMap &previousResult,
         const DependencyMap &/*dirtiedDependencies*/,
         HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
-        override
-    {
-        // fetch arguments (primvars) the first time only (we assume
-        // they never change), then (re)populate the scene
-
-        if (_updateCount == 0) {
-            _args = GetArgs(inputScene);
-            _dirmapRules = glm::stringToStringArray(
-                _args.dirmap.GetString(), ";");
-            InitCrowd(inputScene);
-        }
-        ++_updateCount;
-        PopulateCrowd(inputScene);
-
-        ChildPrimTypeMap result;
-        SdfPath myPath = _GetProceduralPrimPath();
-        char buffer[128];
-
-        // bbox display mode
-
-        if (_args.displayMode == golaemTokens->bbox) {
-
-            // generate a prim for each entity in the crowd
-
-            _childIndices.clear();
-
-            for (size_t i = 0; i < _bboxEntities.size(); ++i) {
-                sprintf_s(buffer, "c%zu", i);
-                SdfPath childPath = myPath.AppendChild(TfToken(buffer));
-                result[childPath] = HdPrimTypeTokens->mesh;
-                _childIndices[childPath] = i;
-
-                // if the same path was generated by the previous call
-                // to Update(), too, tell Hydra its xform may have
-                // changed
-
-                if (previousResult.size() > 0) {
-                    outputDirtiedPrims->emplace_back(
-                        childPath, HdXformSchema::GetDefaultLocator());
-                }
-            }
-        }
-
-        // mesh display mode
-
-        else {
-
-            // generate a prim for each mesh for each entity
-
-            _childIndexPairs.clear();
-
-            for (size_t i = 0; i < _meshEntities.size(); ++i) {
-                const MeshEntityData& entity = _meshEntities[i];
-                for (size_t j = 0; j < entity.meshes.size(); ++j) {
-
-                    // including the crowd field, entity and mesh in
-                    // the path enables us to tell Hydra that, if the
-                    // same prim appears in two successive frames,
-                    // only the points and normals will have changed
-
-                    sprintf_s(buffer, "c%d_%d_%zu",
-                            entity.crowdFieldIndex, entity.entityIndex, j);
-                    SdfPath childPath = myPath.AppendChild(TfToken(buffer));
-                    result[childPath] = HdPrimTypeTokens->mesh;
-                    _childIndexPairs[childPath] = {i, j};
-
-                    if (previousResult.size() > 0) {
-                        outputDirtiedPrims->emplace_back(
-                            childPath, HdDataSourceLocatorSet({
-                                    HdPrimvarsSchema::GetPointsLocator(),
-                                    HdPrimvarsSchema::GetNormalsLocator()
-                                }));
-                    }
-                }
-            }
-        }
-
-        return result;
-    }
+        override;
 
     HdSceneIndexPrim GetChildPrim(
         const HdSceneIndexBaseRefPtr &/*inputScene*/,
-        const SdfPath &childPrimPath) override
-    {
-        HdSceneIndexPrim result;
-
-        // bbox display mode
-
-        if (_args.displayMode == golaemTokens->bbox) {
-            auto it = _childIndices.find(childPrimPath);
-            if (it == _childIndices.end()) {
-                return result;
-            }
-            result.primType = HdPrimTypeTokens->mesh;
-
-            const BBoxEntityData& entity = _bboxEntities[it->second];
-            GfMatrix4d mtx;
-            mtx.SetScale(entity.extent * entity.scale);
-            GfMatrix4d mtx2(GfRotation(entity.quat), entity.pos);
-            mtx *= mtx2;
-
-            result.dataSource = HdRetainedContainerDataSource::New(
-                HdXformSchemaTokens->xform,
-                HdXformSchema::Builder()
-                .SetMatrix(
-                    HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
-                .Build(),
-                HdMeshSchemaTokens->mesh,
-                GetCubeMeshDataSource(),
-                HdPrimvarsSchemaTokens->primvars,
-                GetCubePrimvarsDataSource());
-        }
-
-        // mesh display mode
-
-        else {
-            auto it = _childIndexPairs.find(childPrimPath);
-            if (it == _childIndexPairs.end()) {
-                return result;
-            }
-            size_t entityIndex = it->second.first;
-            size_t meshIndex = it->second.second;
-            result.primType = HdPrimTypeTokens->mesh;
-            const std::shared_ptr<FileMeshAdapter>& adapter =
-                _meshEntities[entityIndex].meshes[meshIndex];
-
-            // TODO: if the prim is not new, it might be more
-            // efficient to edit the previous data source (via
-            // HdContainerDataSourceEditor) than to create a new one
-            // from scratch, because only the points and vertices
-            // change from frame to frame
-
-            result.dataSource = HdRetainedContainerDataSource::New(
-                HdMeshSchemaTokens->mesh,
-                adapter->GetMeshDataSource(),
-                HdPrimvarsSchemaTokens->primvars,
-                adapter->GetPrimvarsDataSource(),
-                HdMaterialBindingsSchemaTokens->materialBindings,
-                adapter->GetMaterialDataSource());
-        }
-
-        return result;
-    }
+        const SdfPath &childPrimPath) override;
 
 private:
-
     Args GetArgs(const HdSceneIndexBaseRefPtr& inputScene);
     void InitCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
@@ -713,6 +216,7 @@ private:
     // structure's meshes
     _ChildIndexPairMap _childIndexPairs;
 
+    // the Golaem simulation cache factory
     SimulationCacheFactory* _factory;
 
     // how many times Update() has been called
@@ -1133,16 +637,20 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 
     // shader attributes (int, float, string, vector)
 
-    const PODArray<int>& intData = shaderData->intData[entityIndex];
-    const PODArray<float>& floatData = shaderData->floatData[entityIndex];
-    const glm::Array<glm::Vector3>& vectorData = shaderData->vectorData[entityIndex];
-    const glm::Array<GlmString>& stringData = shaderData->stringData[entityIndex];
+    const PODArray<int>& intData =
+        shaderData->intData[entityIndex];
+    const PODArray<float>& floatData =
+        shaderData->floatData[entityIndex];
+    const glm::Array<glm::Vector3>& vectorData =
+        shaderData->vectorData[entityIndex];
+    const glm::Array<GlmString>& stringData =
+        shaderData->stringData[entityIndex];
 
     const PODArray<size_t>& globalToSpecificShaderAttrIdx =
         shaderData->globalToSpecificShaderAttrIdxPerChar[characterIndex];
 
     for (size_t i = 0; i < shaderAttrCount; ++i) {
-        const glm::ShaderAttribute& attr = character->_shaderAttributes[i];
+        const ShaderAttribute& attr = character->_shaderAttributes[i];
 
         // ensure the attribute name is a valid identifier, and maybe
         // prefix it with "arnold:"
@@ -1165,22 +673,22 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 
         size_t index = globalToSpecificShaderAttrIdx[i];
         switch (attr._type) {
-        case glm::ShaderAttributeType::INT:
+        case ShaderAttributeType::INT:
             (*dataSources)[name] =
                 HdRetainedTypedSampledDataSource<int>::New(
                     intData[index]);
             break;
-        case glm::ShaderAttributeType::FLOAT:
+        case ShaderAttributeType::FLOAT:
             (*dataSources)[name] =
                 HdRetainedTypedSampledDataSource<float>::New(
                     floatData[index]);
             break;
-        case glm::ShaderAttributeType::STRING:
+        case ShaderAttributeType::STRING:
             (*dataSources)[name] =
                 HdRetainedTypedSampledDataSource<TfToken>::New(
                     TfToken(stringData[index].c_str()));
             break;
-        case glm::ShaderAttributeType::VECTOR:
+        case ShaderAttributeType::VECTOR:
             (*dataSources)[name] =
                 HdRetainedTypedSampledDataSource<GfVec3f>::New(
                     GfVec3f(vectorData[index].getFloatValues()));
@@ -1339,6 +847,269 @@ GolaemProcedural::GenerateMeshes(
     }
 
     return adapters;
+}
+
+HdGpGenerativeProcedural::DependencyMap
+GolaemProcedural::UpdateDependencies(
+    const HdSceneIndexBaseRefPtr &inputScene)
+{
+    DependencyMap result;
+
+    // call Update() when the current frame or the render settings
+    // (for motion blur) change
+
+    result[HdSceneGlobalsSchema::GetDefaultPrimPath()] = {
+        HdSceneGlobalsSchema::GetCurrentFrameLocator(),
+        HdSceneGlobalsSchema::GetActiveRenderSettingsPrimLocator(),
+    };
+
+    // call Update() when the motion blur shutter interval changes: if
+    // there is an active render settings prim, get the shutter
+    // interval from there, otherwise look for a primary camera and
+    // use its shutter settings
+
+    const HdSceneGlobalsSchema globals =
+        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
+
+    if (globals) {
+        HdPathDataSourceHandle rsPrimDS =
+            globals.GetActiveRenderSettingsPrim();
+        if (rsPrimDS) {
+            const SdfPath rsPath = rsPrimDS->GetTypedValue(0);
+            if (!rsPath.IsEmpty()) {
+                result[rsPath] = {
+                    HdRenderSettingsSchema::GetShutterIntervalLocator()
+                };
+            }
+        } else {
+            HdPathDataSourceHandle camPathDS =
+                globals.GetPrimaryCameraPrim();
+            if (camPathDS) {
+                const SdfPath camPath = camPathDS->GetTypedValue(0);
+                if (!camPath.IsEmpty()) {
+                    result[camPath] = {
+                        HdCameraSchema::GetShutterOpenLocator(),
+                        HdCameraSchema::GetShutterCloseLocator()
+                    };
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
+    const HdSceneIndexBaseRefPtr &inputScene,
+    const ChildPrimTypeMap &previousResult,
+    const DependencyMap &/*dirtiedDependencies*/,
+    HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
+{
+    // fetch arguments (primvars) the first time only (we assume they
+    // never change), then (re)populate the scene
+
+    if (_updateCount == 0) {
+        _args = GetArgs(inputScene);
+        _dirmapRules = glm::stringToStringArray(
+            _args.dirmap.GetString(), ";");
+        InitCrowd(inputScene);
+    }
+    ++_updateCount;
+    PopulateCrowd(inputScene);
+
+    ChildPrimTypeMap result;
+    SdfPath myPath = _GetProceduralPrimPath();
+    char buffer[128];
+
+    // bbox display mode
+
+    if (_args.displayMode == golaemTokens->bbox) {
+
+        // generate a prim for each entity in the crowd
+
+        _childIndices.clear();
+
+        for (size_t i = 0; i < _bboxEntities.size(); ++i) {
+            sprintf_s(buffer, "c%zu", i);
+            SdfPath childPath = myPath.AppendChild(TfToken(buffer));
+            result[childPath] = HdPrimTypeTokens->mesh;
+            _childIndices[childPath] = i;
+
+            // if the same path was generated by the previous call to
+            // Update(), too, tell Hydra its xform may have changed
+
+            if (previousResult.size() > 0) {
+                outputDirtiedPrims->emplace_back(
+                    childPath, HdXformSchema::GetDefaultLocator());
+            }
+        }
+    }
+
+    // mesh display mode
+
+    else {
+
+        // generate a prim for each mesh for each entity
+
+        _childIndexPairs.clear();
+
+        for (size_t i = 0; i < _meshEntities.size(); ++i) {
+            const MeshEntityData& entity = _meshEntities[i];
+            for (size_t j = 0; j < entity.meshes.size(); ++j) {
+
+                // including the crowd field, entity and mesh in the
+                // path enables us to tell Hydra that, if the same
+                // prim appears in two successive frames, only the
+                // points and normals will have changed
+
+                sprintf_s(buffer, "c%d_%d_%zu",
+                        entity.crowdFieldIndex, entity.entityIndex, j);
+                SdfPath childPath = myPath.AppendChild(TfToken(buffer));
+                result[childPath] = HdPrimTypeTokens->mesh;
+                _childIndexPairs[childPath] = {i, j};
+
+                if (previousResult.size() > 0) {
+                    outputDirtiedPrims->emplace_back(
+                        childPath, HdDataSourceLocatorSet({
+                                HdPrimvarsSchema::GetPointsLocator(),
+                                HdPrimvarsSchema::GetNormalsLocator()
+                            }));
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/*
+ * Returns a data source which returns the topology of a cube.
+ */
+HdContainerDataSourceHandle GetCubeMeshDataSource()
+{
+    static const VtIntArray faceVertexCounts =
+        {4, 4, 4, 4, 4, 4};
+
+    static const VtIntArray faceVertexIndices =
+        {0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1,
+            7, 5, 3, 6, 0, 2, 4};
+
+    using _IntArrayDs =
+        HdRetainedTypedSampledDataSource<VtIntArray>;
+
+    static const _IntArrayDs::Handle fvcDs =
+        _IntArrayDs::New(faceVertexCounts);
+
+    static const _IntArrayDs::Handle fviDs =
+        _IntArrayDs::New(faceVertexIndices);
+
+    static const HdContainerDataSourceHandle meshDs =
+        HdMeshSchema::Builder()
+            .SetTopology(HdMeshTopologySchema::Builder()
+                .SetFaceVertexCounts(fvcDs)
+                .SetFaceVertexIndices(fviDs)
+                .Build())
+            .Build();
+
+    return meshDs;
+}
+
+/*
+ * Returns a data source which returns the vertices of a cube.
+ */
+HdContainerDataSourceHandle GetCubePrimvarsDataSource()
+{
+    static const VtArray<GfVec3f> points = {
+        {-1.0f, -1.0f, 1.0f},
+        {1.0f, -1.0f, 1.0f},
+        {-1.0f, 1.0f, 1.0f},
+        {1.0f, 1.0f, 1.0f},
+        {-1.0f, 1.0f, -1.0f},
+        {1.0f, 1.0f, -1.0f},
+        {-1.0f, -1.0f, -1.0f},
+        {1.0f, -1.0f, -1.0f}};
+
+    using _PointArrayDs =
+        HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
+
+    static const HdContainerDataSourceHandle primvarsDs =
+        HdRetainedContainerDataSource::New(
+            HdPrimvarsSchemaTokens->points,
+            HdPrimvarSchema::Builder()
+                .SetPrimvarValue(_PointArrayDs::New(points))
+                .SetInterpolation(HdPrimvarSchema::
+                    BuildInterpolationDataSource(
+                        HdPrimvarSchemaTokens->vertex))
+                .SetRole(HdPrimvarSchema::
+                    BuildRoleDataSource(
+                        HdPrimvarSchemaTokens->point))
+                .Build()
+        );
+
+    return primvarsDs;
+}
+
+HdSceneIndexPrim GolaemProcedural::GetChildPrim(
+    const HdSceneIndexBaseRefPtr &/*inputScene*/,
+    const SdfPath &childPrimPath)
+{
+    HdSceneIndexPrim result;
+
+    // bbox display mode
+
+    if (_args.displayMode == golaemTokens->bbox) {
+        auto it = _childIndices.find(childPrimPath);
+        if (it == _childIndices.end()) {
+            return result;
+        }
+        result.primType = HdPrimTypeTokens->mesh;
+
+        const BBoxEntityData& entity = _bboxEntities[it->second];
+        GfMatrix4d mtx;
+        mtx.SetScale(entity.extent * entity.scale);
+        GfMatrix4d mtx2(GfRotation(entity.quat), entity.pos);
+        mtx *= mtx2;
+
+        result.dataSource = HdRetainedContainerDataSource::New(
+            HdXformSchemaTokens->xform,
+            HdXformSchema::Builder()
+            .SetMatrix(
+                HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
+            .Build(),
+            HdMeshSchemaTokens->mesh,
+            GetCubeMeshDataSource(),
+            HdPrimvarsSchemaTokens->primvars,
+            GetCubePrimvarsDataSource());
+    }
+
+    // mesh display mode
+
+    else {
+        auto it = _childIndexPairs.find(childPrimPath);
+        if (it == _childIndexPairs.end()) {
+            return result;
+        }
+        size_t entityIndex = it->second.first;
+        size_t meshIndex = it->second.second;
+        result.primType = HdPrimTypeTokens->mesh;
+        const std::shared_ptr<FileMeshAdapter>& adapter =
+            _meshEntities[entityIndex].meshes[meshIndex];
+
+        // TODO: if the prim is not new, it might be more efficient to
+        // use HdContainerDataSourceEditor to edit the previous data
+        // source than to create a new one from scratch, because only
+        // the points and vertices change from frame to frame
+
+        result.dataSource = HdRetainedContainerDataSource::New(
+            HdMeshSchemaTokens->mesh,
+            adapter->GetMeshDataSource(),
+            HdPrimvarsSchemaTokens->primvars,
+            adapter->GetPrimvarsDataSource(),
+            HdMaterialBindingsSchemaTokens->materialBindings,
+            adapter->GetMaterialDataSource());
+    }
+
+    return result;
 }
 
 }  // anonymous namespace
