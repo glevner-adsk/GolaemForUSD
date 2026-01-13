@@ -1,10 +1,9 @@
 /*
  * TODO:
- * - layout file support
- * - skeleton display mode
- * - LODs
  * - motion blur
+ * - LODs
  * - FBX support
+ * - skeleton display mode
  */
 #include <pxr/imaging/hdGp/generativeProceduralPlugin.h>
 #include <pxr/imaging/hdGp/generativeProceduralPluginRegistry.h>
@@ -26,6 +25,7 @@
 
 #include <glmCrowdGcgCharacter.h>
 #include <glmCrowdIOUtils.h>
+#include <glmCrowdTerrainMesh.h>
 #include <glmGolaemCharacter.h>
 #include <glmIdsFilter.h>
 #include <glmSimulationCacheFactory.h>
@@ -73,6 +73,9 @@ TF_DEFINE_PRIVATE_TOKENS(
     (cacheDir)
     (characterFiles)
     (entityIds)
+    (enableLayout)
+    (layoutFiles)
+    (terrainFile)
     (renderPercent)
     (displayMode)
     (geometryTag)
@@ -102,6 +105,7 @@ struct Args
 {
     Args()
         : entityIds("*"),
+          enableLayout(true),
           renderPercent(100),
           displayMode(golaemTokens->mesh),
           geometryTag(0),
@@ -114,6 +118,9 @@ struct Args
     TfToken cacheDir;
     TfToken characterFiles;
     TfToken entityIds;
+    bool enableLayout;
+    TfToken layoutFiles;
+    TfToken terrainFile;
     float renderPercent;
     TfToken displayMode;
     int geometryTag;
@@ -205,7 +212,10 @@ private:
     Args _args;
 
     // parsed dirmap rules for findDirmappedFile()
-    glm::Array<glm::GlmString> _dirmapRules;
+    glm::Array<GlmString> _dirmapRules;
+
+    // actual cache directory after applying dirmap rules
+    GlmString _mappedCacheDir;
 
     // in bbox display mode, maps the path of a Hydra prim to an index
     // into _bboxEntities
@@ -283,7 +293,8 @@ Args GolaemProcedural::GetArgs(
 {
     Args result;
 
-    HdSceneIndexPrim prim = inputScene->GetPrim(_GetProceduralPrimPath());
+    HdSceneIndexPrim prim =
+        inputScene->GetPrim(_GetProceduralPrimPath());
     HdPrimvarsSchema primvars =
         HdPrimvarsSchema::GetFromParent(prim.dataSource);
 
@@ -298,6 +309,12 @@ Args GolaemProcedural::GetArgs(
     GetTypedPrimvar(
         primvars, golaemTokens->entityIds, result.entityIds);
     GetTypedPrimvar(
+        primvars, golaemTokens->enableLayout, result.enableLayout);
+    GetTypedPrimvar(
+        primvars, golaemTokens->layoutFiles, result.layoutFiles);
+    GetTypedPrimvar(
+        primvars, golaemTokens->terrainFile, result.terrainFile);
+    GetTypedPrimvar(
         primvars, golaemTokens->renderPercent, result.renderPercent);
     GetTypedPrimvar(
         primvars, golaemTokens->displayMode, result.displayMode);
@@ -306,7 +323,8 @@ Args GolaemProcedural::GetArgs(
     GetTypedPrimvar(
         primvars, golaemTokens->dirmap, result.dirmap);
     GetTypedPrimvar(
-        primvars, golaemTokens->materialAssignMode, result.materialAssignMode);
+        primvars, golaemTokens->materialAssignMode,
+        result.materialAssignMode);
 
     // a primvar cannot be a relationship, so we convert the
     // materialPath argument (a token) to an SdfPath, which can be
@@ -337,25 +355,68 @@ Args GolaemProcedural::GetArgs(
 void GolaemProcedural::InitCrowd(
     const HdSceneIndexBaseRefPtr& /*inputScene*/)
 {
-    if (_args.characterFiles.IsEmpty()) {
-        return;
+    // apply dirmap rules to find actual paths of character files and
+    // load them
+
+    if (_args.characterFiles.size() > 0) {
+        glm::Array<GlmString> fileList;
+        split(_args.characterFiles.GetString(), ";", fileList);
+
+        for (int i = 0; i < fileList.size(); ++i) {
+            GlmString mappedPath;
+            findDirmappedFile(mappedPath, fileList[i], _dirmapRules);
+            fileList[i] = mappedPath;
+        }
+
+        GlmString characterFiles =
+            glm::stringArrayToString(fileList, ";");
+        _factory->loadGolaemCharacters(characterFiles);
     }
 
-    // apply dirmap rules to find actual paths of character files
+    // dirmap and load layout and terrain files
 
-    glm::Array<GlmString> fileList;
-    split(_args.characterFiles.GetString(), ";", fileList);
+    if (_args.enableLayout && !_args.layoutFiles.IsEmpty()) {
 
-    for (int i = 0; i < fileList.size(); ++i) {
-        GlmString mappedPath;
-        findDirmappedFile(mappedPath, fileList[i], _dirmapRules);
-        fileList[i] = mappedPath;
+        // load layout files
+
+        glm::Array<GlmString> fileList;
+        split(_args.layoutFiles.GetString(), ";", fileList);
+
+        for (int i = 0; i < fileList.size(); ++i) {
+            GlmString mappedPath;
+            findDirmappedFile(mappedPath, fileList[i], _dirmapRules);
+            _factory->loadLayoutHistoryFile(
+                _factory->getLayoutHistoryCount(), mappedPath.c_str());
+        }
+
+        // load terrain files
+
+        glm::crowdio::crowdTerrain::TerrainMesh *srcTerrain = nullptr;
+        glm::crowdio::crowdTerrain::TerrainMesh *dstTerrain = nullptr;
+
+        if (_args.crowdFields.size() > 0) {
+            GlmString glmpath =
+                _mappedCacheDir + "/" + _args.cacheName.GetText() +
+                "." + _args.crowdFields[0].GetText() + ".gtg";
+            srcTerrain = glm::crowdio::crowdTerrain::loadTerrainAsset(
+                glmpath.c_str());
+        }
+
+        if (!_args.terrainFile.IsEmpty()) {
+            GlmString mappedPath;
+            findDirmappedFile(
+                mappedPath, _args.terrainFile.GetString(),
+                _dirmapRules);
+            dstTerrain = glm::crowdio::crowdTerrain::loadTerrainAsset(
+                mappedPath.c_str());
+        }
+
+        if (dstTerrain == nullptr) {
+            dstTerrain = srcTerrain;
+        }
+
+        _factory->setTerrainMeshes(srcTerrain, dstTerrain);
     }
-
-    // load character files
-
-    GlmString characterFiles = glm::stringArrayToString(fileList, ";");
-    _factory->loadGolaemCharacters(characterFiles);
 }
 
 /*
@@ -477,10 +538,6 @@ void GolaemProcedural::PopulateCrowd(
     _bboxEntities.clear();
     _meshEntities.clear();
 
-    GlmString actualCacheDir;
-    findDirmappedFile(
-        actualCacheDir, _args.cacheDir.GetString(), _dirmapRules);
-
     glm::IdsFilter entityIdsFilter(_args.entityIds.GetText());
 
     for (int ifield = 0; ifield < _args.crowdFields.size(); ++ifield) {
@@ -491,7 +548,7 @@ void GolaemProcedural::PopulateCrowd(
 
         CachedSimulation& cachedSimulation =
             _factory->getCachedSimulation(
-                actualCacheDir.c_str(), _args.cacheName.GetText(),
+                _mappedCacheDir.c_str(), _args.cacheName.GetText(),
                 fieldName.GetText());
 
         const GlmSimulationData *simData =
@@ -855,12 +912,14 @@ GolaemProcedural::UpdateDependencies(
 {
     DependencyMap result;
 
-    // call Update() when the current frame or the render settings
-    // (for motion blur) change
+    // call Update() when the current frame changes, the render
+    // settings change (for motion blur), or the primary camera
+    // changes (for LODs and motion blur)
 
     result[HdSceneGlobalsSchema::GetDefaultPrimPath()] = {
         HdSceneGlobalsSchema::GetCurrentFrameLocator(),
         HdSceneGlobalsSchema::GetActiveRenderSettingsPrimLocator(),
+        HdSceneGlobalsSchema::GetPrimaryCameraPrimLocator()
     };
 
     // call Update() when the motion blur shutter interval changes: if
@@ -912,6 +971,8 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         _args = GetArgs(inputScene);
         _dirmapRules = glm::stringToStringArray(
             _args.dirmap.GetString(), ";");
+        findDirmappedFile(
+            _mappedCacheDir, _args.cacheDir.GetString(), _dirmapRules);
         InitCrowd(inputScene);
     }
     ++_updateCount;
