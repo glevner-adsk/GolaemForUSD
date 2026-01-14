@@ -177,17 +177,17 @@ public:
     }
 
     DependencyMap UpdateDependencies(
-        const HdSceneIndexBaseRefPtr &inputScene) override;
+        const HdSceneIndexBaseRefPtr& inputScene) override;
 
     ChildPrimTypeMap Update(
-        const HdSceneIndexBaseRefPtr &inputScene,
-        const ChildPrimTypeMap &previousResult,
-        const DependencyMap &/*dirtiedDependencies*/,
+        const HdSceneIndexBaseRefPtr& inputScene,
+        const ChildPrimTypeMap& previousResult,
+        const DependencyMap& /*dirtiedDependencies*/,
         HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
         override;
 
     HdSceneIndexPrim GetChildPrim(
-        const HdSceneIndexBaseRefPtr &/*inputScene*/,
+        const HdSceneIndexBaseRefPtr& /*inputScene*/,
         const SdfPath &childPrimPath) override;
 
 private:
@@ -200,7 +200,7 @@ private:
     PrimvarDataSourceMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData,
         const GlmFrameData *frameData,
-        const ShaderAssetDataContainer* shaderData,
+        const ShaderAssetDataContainer *shaderData,
         const GolaemCharacter *character,
         int entityIndex) const;
 
@@ -1000,11 +1000,19 @@ GolaemProcedural::UpdateDependencies(
 }
 
 HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
-    const HdSceneIndexBaseRefPtr &inputScene,
-    const ChildPrimTypeMap &previousResult,
-    const DependencyMap &/*dirtiedDependencies*/,
+    const HdSceneIndexBaseRefPtr& inputScene,
+    const ChildPrimTypeMap& previousResult,
+    const DependencyMap& /*dirtiedDependencies*/,
     HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
 {
+    /*
+    for (auto it = dirtiedDependencies.begin();
+         it != dirtiedDependencies.end(); ++it) {
+        std::cout << "dirtied: " << it->first << " "
+                  << it->second << '\n';
+    }
+    */
+
     // fetch arguments (primvars) the first time only (we assume they
     // never change), then (re)populate the scene
 

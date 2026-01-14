@@ -113,14 +113,13 @@ void FileMeshAdapter::SetAnimatedData(
  * of shutter offsets and the deformed vertices and normals for each
  * of those offsets.
  *
- * It is assumed that the shutterOffsets are given in order! That is,
+ * It is assumed that the shutter offsets are given in order! That is,
  * HdRetainedTypedMultisampledDataSource makes that assumption.
  *
  * The DeformedVectors type corresponds to the vector arrays found in
  * glm::crowdio::OutputEntityGeoData. The arrays have three dimensions
- * -- corresponding to the shutter offset index, the mesh index and
- * the vector index -- so we need the mesh index to access the
- * vectors.
+ * -- corresponding to the frame index, the mesh index and the vector
+ * index -- so we need the mesh index to access the vectors.
  */
 void FileMeshAdapter::SetAnimatedData(
     const glm::Array<float>& shutterOffsets,
