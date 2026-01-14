@@ -11,7 +11,9 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
-namespace glmHydra {
+using Time = HdSampledDataSource::Time;
+
+namespace glmhydra {
 
 TF_DEFINE_PRIVATE_TOKENS(
     fileMeshAdapterTokens,
@@ -24,24 +26,22 @@ TF_DEFINE_PRIVATE_TOKENS(
  * little else, leaving as much work as possible for the methods which
  * return the data sources, because they may be called from multiple
  * threads.
+ *
+ * Call SetAnimatedData() afterwards to set the deformed vertices and
+ * normals.
  */
 FileMeshAdapter::FileMeshAdapter(
     const glm::crowdio::GlmFileMesh& fileMesh,
-    const glm::Array<glm::Vector3>& deformedVertices,
-    const glm::Array<glm::Vector3>& deformedNormals,
     const SdfPath& material, const PrimvarDSMapRef& customPrimvars)
     : _vertexCounts(fileMesh._polygonCount),
       _vertexIndices(fileMesh._polygonsTotalVertexCount),
-      _vertices(fileMesh._vertexCount),
-      _normals(fileMesh._normalCount),
+      _totalVertexCount(fileMesh._vertexCount),
+      _totalNormalCount(fileMesh._normalCount),
       _normalMode(glm::crowdio::GlmNormalMode(fileMesh._normalMode)),
       _uvMode(glm::crowdio::GlmUVMode(fileMesh._uvMode)),
       _material(material),
       _customPrimvars(customPrimvars)
 {
-    assert(deformedVertices.size() == _vertices.size());
-    assert(deformedNormals.size() == _normals.size());
-
     for (int i = 0; i < _vertexCounts.size(); ++i) {
         _vertexCounts[i] = fileMesh._polygonsVertexCount[i];
     }
@@ -50,20 +50,11 @@ FileMeshAdapter::FileMeshAdapter(
         _vertexIndices[i] = fileMesh._polygonsVertexIndices[i];
     }
 
-    for (int i = 0; i < _vertices.size(); ++i) {
-        _vertices[i].Set(deformedVertices[i].getFloatValues());
-    }
-
-    if (_normals.size() > 0) {
-        if (_normalMode ==
-            glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
-            _normalIndices.resize(fileMesh._polygonsTotalVertexCount);
-            for (int i = 0; i < _normalIndices.size(); ++i) {
-                _normalIndices[i] = fileMesh._polygonsNormalIndices[i];
-            }
-        }
-        for (int i = 0; i < _normals.size(); ++i) {
-            _normals[i].Set(deformedNormals[i].getFloatValues());
+    if (_normals.size() > 0 &&
+        _normalMode == glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
+        _normalIndices.resize(fileMesh._polygonsTotalVertexCount);
+        for (int i = 0; i < _normalIndices.size(); ++i) {
+            _normalIndices[i] = fileMesh._polygonsNormalIndices[i];
         }
     }
 
@@ -82,6 +73,77 @@ FileMeshAdapter::FileMeshAdapter(
         for (int i = 0; i < _uvs.size(); ++i) {
             _uvs[i].Set(fileMesh._us[0][i], fileMesh._vs[0][i]);
         }
+    }
+}
+
+/*
+ * Copies a glm::Array of vectors to a VtArray, resizing it as needed.
+ */
+static inline void CopyGlmArrayToVtArray(
+    VtVec3fArray& dst, const glm::Array<glm::Vector3>& src)
+{
+    size_t sz = src.size();
+    dst.resize(sz);
+    for (size_t i = 0; i < sz; ++i) {
+        dst[i].Set(src[i].getFloatValues());
+    }
+}
+
+/*
+ * Sets the deformed vertices and normals for the current frame.
+ */
+void FileMeshAdapter::SetAnimatedData(
+    const glm::Array<glm::Vector3>& deformedVertices,
+    const glm::Array<glm::Vector3>& deformedNormals)
+{
+    assert(deformedVertices.size() == _totalVertexCount);
+    assert(deformedNormals.size() == _totalNormalCount);
+
+    _shutterOffsets.assign(1, 0);
+
+    _vertices.resize(1);
+    _normals.resize(1);
+
+    CopyGlmArrayToVtArray(_vertices[0], deformedVertices);
+    CopyGlmArrayToVtArray(_normals[0], deformedNormals);
+}
+
+/*
+ * Variation on SetAnimatedData() for motion blur. Specify any number
+ * of shutter offsets and the deformed vertices and normals for each
+ * of those offsets.
+ *
+ * It is assumed that the shutterOffsets are given in order! That is,
+ * HdRetainedTypedMultisampledDataSource makes that assumption.
+ *
+ * The DeformedVectors type corresponds to the vector arrays found in
+ * glm::crowdio::OutputEntityGeoData. The arrays have three dimensions
+ * -- corresponding to the shutter offset index, the mesh index and
+ * the vector index -- so we need the mesh index to access the
+ * vectors.
+ */
+void FileMeshAdapter::SetAnimatedData(
+    const glm::Array<float>& shutterOffsets,
+    const DeformedVectors& deformedVertices,
+    const DeformedVectors& deformedNormals,
+    size_t meshIndex)
+{
+    const size_t sampleCount = shutterOffsets.size();
+
+    assert(deformedVertices.size() == sampleCount);
+    assert(deformedNormals.size() == sampleCount);
+
+    _shutterOffsets.assign(
+        shutterOffsets.begin(), shutterOffsets.end());
+
+    _vertices.resize(sampleCount);
+    _normals.resize(sampleCount);
+
+    for (size_t i = 0; i < sampleCount; ++i) {
+        assert(deformedVertices[i][meshIndex].size() == _totalVertexCount);
+        CopyGlmArrayToVtArray(_vertices[i], deformedVertices[i][meshIndex]);
+        assert(deformedNormals[i][meshIndex].size() == _totalNormalCount);
+        CopyGlmArrayToVtArray(_normals[i], deformedNormals[i][meshIndex]);
     }
 }
 
@@ -117,7 +179,11 @@ FileMeshAdapter::GetPrimvarsDataSource() const
 
     HdContainerDataSourceHandle vertexDataSource =
         HdPrimvarSchema::Builder()
-        .SetPrimvarValue(Vec3fArrayDS::New(_vertices))
+        .SetPrimvarValue(
+            Vec3fArrayDS::New(
+                _shutterOffsets.size(),
+                const_cast<Time*>(_shutterOffsets.data()),
+                const_cast<VtVec3fArray*>(_vertices.data())))
         .SetInterpolation(
             HdPrimvarSchema::BuildInterpolationDataSource(
                 HdPrimvarSchemaTokens->vertex))
@@ -134,17 +200,24 @@ FileMeshAdapter::GetPrimvarsDataSource() const
     HdContainerDataSourceHandle normalDataSource;
 
     if (_normals.size() > 0) {
-        HdPrimvarSchema::Builder normalBuilder;
 
         // normals may or may not be indexed
 
+        HdPrimvarSchema::Builder normalBuilder;
         if (_normalMode ==
             glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
             normalBuilder.SetIndexedPrimvarValue(
-                Vec3fArrayDS::New(_normals));
+                Vec3fArrayDS::New(
+                    _shutterOffsets.size(),
+                    const_cast<Time*>(_shutterOffsets.data()),
+                    const_cast<VtVec3fArray*>(_normals.data())));
             normalBuilder.SetIndices(IntArrayDS::New(_normalIndices));
         } else {
-            normalBuilder.SetPrimvarValue(Vec3fArrayDS::New(_normals));
+            normalBuilder.SetPrimvarValue(
+                Vec3fArrayDS::New(
+                    _shutterOffsets.size(),
+                    const_cast<Time*>(_shutterOffsets.data()),
+                    const_cast<VtVec3fArray*>(_normals.data())));
         }
 
         // normals may or may not be shared by polygons using the
@@ -245,4 +318,4 @@ FileMeshAdapter::GetMaterialDataSource() const
         .Build());
 }
 
-}  // namespace golaemHydra
+}  // namespace glmhydra

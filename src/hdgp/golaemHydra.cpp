@@ -61,7 +61,7 @@ using glm::crowdio::GlmSimulationData;
 using glm::crowdio::GlmUVMode;
 using glm::crowdio::SimulationCacheFactory;
 
-using glmHydra::FileMeshAdapter;
+using glmhydra::FileMeshAdapter;
 
 namespace
 {
@@ -196,7 +196,7 @@ private:
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
-        int entityIndex);
+        int entityIndex, bool motionBlur, const GfVec2d& shutter);
     PrimvarDataSourceMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData,
         const GlmFrameData *frameData,
@@ -524,13 +524,16 @@ void GolaemProcedural::PopulateCrowd(
     double frame = GetCurrentFrame(inputScene);
     //std::cout << "current frame: " << frame << '\n';
 
+    bool motionBlur = false;
     GfVec2d shutter;
     if (GetShutterFromRenderSettings(inputScene, &shutter)) {
-        std::cout << "motion blur shutter from render settings: "
-                  << shutter[0] << ' ' << shutter[1] << '\n';
+        //std::cout << "motion blur shutter from render settings: "
+        //          << shutter[0] << ' ' << shutter[1] << '\n';
+        motionBlur = (shutter != GfVec2d(0));
     } else if (GetShutterFromCamera(inputScene, &shutter)) {
-        std::cout << "motion blur shutter from camera: "
-                  << shutter[0] << ' ' << shutter[1] << '\n';
+        //std::cout << "motion blur shutter from camera: "
+        //          << shutter[0] << ' ' << shutter[1] << '\n';
+        motionBlur = (shutter != GfVec2d(0));
     }
 
     // iterate over entities in crowd fields
@@ -655,7 +658,8 @@ void GolaemProcedural::PopulateCrowd(
                 entity.crowdFieldIndex = ifield;
                 entity.entityIndex = ientity;
                 entity.meshes = GenerateMeshes(
-                    cachedSimulation, frame, ientity);
+                    cachedSimulation, frame, ientity, motionBlur,
+                    shutter);
             }
         }
     }
@@ -780,7 +784,8 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
  */
 std::vector<std::shared_ptr<FileMeshAdapter>>
 GolaemProcedural::GenerateMeshes(
-    CachedSimulation& cachedSimulation, double frame, int entityIndex)
+    CachedSimulation& cachedSimulation, double frame, int entityIndex,
+    bool motionBlur, const GfVec2d& shutter)
 {
     std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
 
@@ -808,11 +813,38 @@ GolaemProcedural::GenerateMeshes(
     inputData._entityIndex = entityIndex;
     inputData._entityToBakeIndex = simData->_entityToBakeIndex[entityIndex];
     inputData._entityId = simData->_entityIds[entityIndex];
-    inputData._frames.assign(1, frame);
-    inputData._frameDatas.assign(1, frameData);
     inputData._dirMapRules = _dirmapRules;
     inputData._geometryTag = short(_args.geometryTag);
     inputData._geoFileIndex = 0;
+
+    glm::Array<float> shutterOffsets;
+
+    if (motionBlur) {
+        inputData._frames.reserve(3);
+        inputData._frameDatas.reserve(3);
+        if (shutter[0] != 0.0) {
+            inputData._frames.push_back(shutter[0]);
+            inputData._frameDatas.push_back(
+                cachedSimulation.getFinalFrameData(
+                    frame + shutter[0], UINT32_MAX, true));
+            shutterOffsets.push_back(float(shutter[0]));
+        }
+        if (shutter[0] <= 0.0 && shutter[1] >= 0.0) {
+            inputData._frames.push_back(0);
+            inputData._frameDatas.push_back(frameData);
+            shutterOffsets.push_back(0);
+        }
+        if (shutter[1] != 0.0) {
+            inputData._frames.push_back(shutter[1]);
+            inputData._frameDatas.push_back(
+                cachedSimulation.getFinalFrameData(
+                    frame + shutter[0], UINT32_MAX, true));
+            shutterOffsets.push_back(float(shutter[1]));
+        }
+    } else {
+        inputData._frames.assign(1, frame);
+        inputData._frameDatas.assign(1, frameData);
+    }
 
     glm::crowdio::OutputEntityGeoData outputData;
     glm::crowdio::GlmGeometryGenerationStatus geoStatus =
@@ -895,12 +927,21 @@ GolaemProcedural::GenerateMeshes(
         // construct a FileMeshAdapter to generate Hydra data sources
         // for the mesh and its material
 
-        adapters.emplace_back(
+        std::shared_ptr<FileMeshAdapter> adapter =
             std::make_shared<FileMeshAdapter>(
-                fileMesh,
+                fileMesh, material, customPrimvars);
+
+        if (motionBlur) {
+            adapter->SetAnimatedData(
+                shutterOffsets, outputData._deformedVertices,
+                outputData._deformedNormals, imesh);
+        } else {
+            adapter->SetAnimatedData(
                 outputData._deformedVertices[0][imesh],
-                outputData._deformedNormals[0][imesh],
-                material, customPrimvars));
+                outputData._deformedNormals[0][imesh]);
+        }
+
+        adapters.emplace_back(adapter);
     }
 
     return adapters;
@@ -1123,7 +1164,6 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         if (it == _childIndices.end()) {
             return result;
         }
-        result.primType = HdPrimTypeTokens->mesh;
 
         const BBoxEntityData& entity = _bboxEntities[it->second];
         GfMatrix4d mtx;
@@ -1131,6 +1171,7 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         GfMatrix4d mtx2(GfRotation(entity.quat), entity.pos);
         mtx *= mtx2;
 
+        result.primType = HdPrimTypeTokens->mesh;
         result.dataSource = HdRetainedContainerDataSource::New(
             HdXformSchemaTokens->xform,
             HdXformSchema::Builder()
@@ -1150,17 +1191,13 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         if (it == _childIndexPairs.end()) {
             return result;
         }
+
         size_t entityIndex = it->second.first;
         size_t meshIndex = it->second.second;
-        result.primType = HdPrimTypeTokens->mesh;
         const std::shared_ptr<FileMeshAdapter>& adapter =
             _meshEntities[entityIndex].meshes[meshIndex];
 
-        // TODO: if the prim is not new, it might be more efficient to
-        // use HdContainerDataSourceEditor to edit the previous data
-        // source than to create a new one from scratch, because only
-        // the points and vertices change from frame to frame
-
+        result.primType = HdPrimTypeTokens->mesh;
         result.dataSource = HdRetainedContainerDataSource::New(
             HdMeshSchemaTokens->mesh,
             adapter->GetMeshDataSource(),

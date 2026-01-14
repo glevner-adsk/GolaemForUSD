@@ -17,8 +17,9 @@
 #include <glmVector3.h>
 
 #include <memory>
+#include <vector>
 
-namespace glmHydra {
+namespace glmhydra {
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -31,16 +32,26 @@ PXR_NAMESPACE_USING_DIRECTIVE
 class FileMeshAdapter
 {
 public:
-using PrimvarDSMap =
-    TfDenseHashMap<TfToken, HdSampledDataSourceHandle, TfHash>;
-using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
+    using PrimvarDSMap =
+        TfDenseHashMap<TfToken, HdSampledDataSourceHandle, TfHash>;
+    using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
+    using DeformedVectors =
+        glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
 
     FileMeshAdapter(
         const glm::crowdio::GlmFileMesh& fileMesh,
-        const glm::Array<glm::Vector3>& deformedVertices,
-        const glm::Array<glm::Vector3>& deformedNormals,
         const SdfPath& material,
         const PrimvarDSMapRef& customPrimvars);
+
+    void SetAnimatedData(
+        const glm::Array<glm::Vector3>& deformedVertices,
+        const glm::Array<glm::Vector3>& deformedNormals);
+
+    void SetAnimatedData(
+        const glm::Array<float>& shutterOffsets,
+        const DeformedVectors& deformedVertices,
+        const DeformedVectors& deformedNormals,
+        size_t meshIndex);
 
     HdContainerDataSourceHandle GetMeshDataSource() const;
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
@@ -48,20 +59,23 @@ using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
 
 private:
     using IntArrayDS = HdRetainedTypedSampledDataSource<VtIntArray>;
-    using Vec3fArrayDS = HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
-    using Vec2fArrayDS = HdRetainedTypedSampledDataSource<VtArray<GfVec2f>>;
+    using Vec3fArrayDS = HdRetainedTypedMultisampledDataSource<VtVec3fArray>;
+    using Vec2fArrayDS = HdRetainedTypedSampledDataSource<VtVec2fArray>;
 
     VtIntArray _vertexCounts;
     VtIntArray _vertexIndices;
-    VtVec3fArray _vertices;
+    size_t _totalVertexCount;
+    std::vector<VtVec3fArray> _vertices;
     VtIntArray _normalIndices;
     glm::crowdio::GlmNormalMode _normalMode;
-    VtVec3fArray _normals;
+    size_t _totalNormalCount;
+    std::vector<VtVec3fArray> _normals;
     VtIntArray _uvIndices;
     glm::crowdio::GlmUVMode _uvMode;
     VtVec2fArray _uvs;
+    std::vector<HdSampledDataSource::Time> _shutterOffsets;
     SdfPath _material;
     const PrimvarDSMapRef _customPrimvars;
 };
 
-}  // namespace glmHydra
+}  // namespace glmhydra
