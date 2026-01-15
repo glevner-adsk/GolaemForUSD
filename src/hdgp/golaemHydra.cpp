@@ -1,6 +1,5 @@
 /*
  * TODO:
- * - motion blur
  * - LODs
  * - FBX support
  * - skeleton display mode
@@ -21,6 +20,7 @@
 
 #include <pxr/base/gf/quatf.h>
 #include <pxr/base/gf/rotation.h>
+#include <pxr/base/tf/debug.h>
 #include <pxr/base/tf/staticTokens.h>
 
 #include <glmCrowdGcgCharacter.h>
@@ -37,6 +37,7 @@
 #include <cmath>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -63,9 +64,13 @@ using glm::crowdio::SimulationCacheFactory;
 
 using glmhydra::FileMeshAdapter;
 
+TF_DEBUG_CODES(
+    GLMHYDRA_DIRTY_PRIMS,
+    GLMHYDRA_MOTION_BLUR
+);
+
 namespace
 {
-
 TF_DEFINE_PRIVATE_TOKENS(
     golaemTokens,
     (crowdFields)
@@ -182,7 +187,7 @@ public:
     ChildPrimTypeMap Update(
         const HdSceneIndexBaseRefPtr& inputScene,
         const ChildPrimTypeMap& previousResult,
-        const DependencyMap& /*dirtiedDependencies*/,
+        const DependencyMap& dirtiedDependencies,
         HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
         override;
 
@@ -522,18 +527,21 @@ void GolaemProcedural::PopulateCrowd(
     // fetch current frame and motion blur settings
 
     double frame = GetCurrentFrame(inputScene);
-    //std::cout << "current frame: " << frame << '\n';
 
     bool motionBlur = false;
     GfVec2d shutter;
     if (GetShutterFromRenderSettings(inputScene, &shutter)) {
-        //std::cout << "motion blur shutter from render settings: "
-        //          << shutter[0] << ' ' << shutter[1] << '\n';
-        motionBlur = (shutter != GfVec2d(0));
+        TF_DEBUG_MSG(
+            GLMHYDRA_MOTION_BLUR,
+            "motion blur shutter from render settings: %g %g\n",
+            shutter[0], shutter[1]);
+        motionBlur = (shutter[0] < shutter[1]);
     } else if (GetShutterFromCamera(inputScene, &shutter)) {
-        //std::cout << "motion blur shutter from camera: "
-        //          << shutter[0] << ' ' << shutter[1] << '\n';
-        motionBlur = (shutter != GfVec2d(0));
+        TF_DEBUG_MSG(
+            GLMHYDRA_MOTION_BLUR,
+            "motion blur shutter from camera: %g %g\n",
+            shutter[0], shutter[1]);
+        motionBlur = (shutter[0] < shutter[1]);
     }
 
     // iterate over entities in crowd fields
@@ -987,6 +995,10 @@ GolaemProcedural::UpdateDependencies(
             if (camPathDS) {
                 const SdfPath camPath = camPathDS->GetTypedValue(0);
                 if (!camPath.IsEmpty()) {
+                    TF_DEBUG_MSG(
+                        GLMHYDRA_MOTION_BLUR,
+                        "add dependency on camera shutter: %s\n",
+                        camPath.GetAsString().c_str());
                     result[camPath] = {
                         HdCameraSchema::GetShutterOpenLocator(),
                         HdCameraSchema::GetShutterCloseLocator()
@@ -1002,16 +1014,18 @@ GolaemProcedural::UpdateDependencies(
 HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
     const HdSceneIndexBaseRefPtr& inputScene,
     const ChildPrimTypeMap& previousResult,
-    const DependencyMap& /*dirtiedDependencies*/,
+    const DependencyMap& dirtiedDependencies,
     HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
 {
-    /*
-    for (auto it = dirtiedDependencies.begin();
-         it != dirtiedDependencies.end(); ++it) {
-        std::cout << "dirtied: " << it->first << " "
-                  << it->second << '\n';
+    if (TfDebug::IsEnabled(GLMHYDRA_DIRTY_PRIMS)) {
+        std::ostringstream strm;
+        for (auto it = dirtiedDependencies.begin();
+             it != dirtiedDependencies.end(); ++it) {
+            strm << "dirty prim: " << it->first << " "
+                 << it->second << '\n';
+        }
+        TF_DEBUG_MSG(GLMHYDRA_DIRTY_PRIMS, strm.str());
     }
-    */
 
     // fetch arguments (primvars) the first time only (we assume they
     // never change), then (re)populate the scene
@@ -1237,4 +1251,12 @@ TF_REGISTRY_FUNCTION(TfType)
     HdGpGenerativeProceduralPluginRegistry::Define<
         GolaemProceduralPlugin,
         HdGpGenerativeProceduralPlugin>();
+}
+
+TF_REGISTRY_FUNCTION(TfDebug)
+{
+    TF_DEBUG_ENVIRONMENT_SYMBOL(
+        GLMHYDRA_DIRTY_PRIMS, "which prims are dirty on Update()");
+    TF_DEBUG_ENVIRONMENT_SYMBOL(
+        GLMHYDRA_MOTION_BLUR, "motion blur debugging");
 }
