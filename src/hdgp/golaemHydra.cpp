@@ -1209,6 +1209,13 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
     // mesh display mode
 
     else {
+        static const HdContainerDataSourceHandle identityXform =
+            HdXformSchema::Builder()
+            .SetMatrix(
+                HdRetainedTypedSampledDataSource<GfMatrix4d>::New(
+                    GfMatrix4d(1.0)))
+            .Build();
+
         auto it = _childIndexPairs.find(childPrimPath);
         if (it == _childIndexPairs.end()) {
             return result;
@@ -1221,6 +1228,8 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
 
         result.primType = HdPrimTypeTokens->mesh;
         result.dataSource = HdRetainedContainerDataSource::New(
+            HdXformSchemaTokens->xform,
+            identityXform,
             HdMeshSchemaTokens->mesh,
             adapter->GetMeshDataSource(),
             HdPrimvarsSchemaTokens->primvars,
