@@ -65,7 +65,7 @@ using glm::crowdio::SimulationCacheFactory;
 using glmhydra::FileMeshAdapter;
 
 TF_DEBUG_CODES(
-    GLMHYDRA_DIRTY_PRIMS,
+    GLMHYDRA_DEPENDENCIES,
     GLMHYDRA_MOTION_BLUR
 );
 
@@ -1009,7 +1009,7 @@ GolaemProcedural::UpdateDependencies(
 
     if (_args.lodMode == golaemTokens->dynamicLOD && !camPath.IsEmpty()) {
         TF_DEBUG_MSG(
-            GLMHYDRA_DIRTY_PRIMS,
+            GLMHYDRA_DEPENDENCIES,
             "add dependency on camera xform: %s\n",
             camPath.GetAsString().c_str());
         result[camPath].insert(HdXformSchema::GetDefaultLocator());
@@ -1031,7 +1031,7 @@ GolaemProcedural::UpdateDependencies(
                 const SdfPath rsPath = rsPrimDS->GetTypedValue(0);
                 if (!rsPath.IsEmpty()) {
                     TF_DEBUG_MSG(
-                        GLMHYDRA_DIRTY_PRIMS,
+                        GLMHYDRA_DEPENDENCIES,
                         "add dependency on render settings shutter\n");
                     result[rsPath] = {
                         HdRenderSettingsSchema::GetShutterIntervalLocator()
@@ -1039,7 +1039,7 @@ GolaemProcedural::UpdateDependencies(
                 }
             } else if (!camPath.IsEmpty()) {
                 TF_DEBUG_MSG(
-                    GLMHYDRA_DIRTY_PRIMS,
+                    GLMHYDRA_DEPENDENCIES,
                     "add dependency on camera shutter: %s\n",
                     camPath.GetAsString().c_str());
                 result[camPath].insert(
@@ -1059,14 +1059,14 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
     const DependencyMap& dirtiedDependencies,
     HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
 {
-    if (TfDebug::IsEnabled(GLMHYDRA_DIRTY_PRIMS)) {
+    if (TfDebug::IsEnabled(GLMHYDRA_DEPENDENCIES)) {
         std::ostringstream strm;
         for (auto it = dirtiedDependencies.begin();
              it != dirtiedDependencies.end(); ++it) {
-            strm << "dirty prim: " << it->first << " "
+            strm << "dirtied prim: " << it->first << " "
                  << it->second << '\n';
         }
-        TF_DEBUG_MSG(GLMHYDRA_DIRTY_PRIMS, strm.str());
+        TF_DEBUG_MSG(GLMHYDRA_DEPENDENCIES, strm.str());
     }
 
     // fetch arguments (primvars) the first time only (we assume they
@@ -1307,7 +1307,7 @@ TF_REGISTRY_FUNCTION(TfType)
 TF_REGISTRY_FUNCTION(TfDebug)
 {
     TF_DEBUG_ENVIRONMENT_SYMBOL(
-        GLMHYDRA_DIRTY_PRIMS, "which prims are dirty on Update()");
+        GLMHYDRA_DEPENDENCIES, "track dependencies and dirtied prims");
     TF_DEBUG_ENVIRONMENT_SYMBOL(
         GLMHYDRA_MOTION_BLUR, "motion blur debugging");
 }
