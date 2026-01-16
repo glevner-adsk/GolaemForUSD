@@ -1,6 +1,7 @@
 /*
  * TODO:
  * - LODs
+ * - specify extents for mesh prims
  * - FBX support
  * - skeleton display mode
  */
@@ -207,7 +208,8 @@ private:
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
-        int entityIndex, bool motionBlur, const GfVec2d& shutter);
+        int entityIndex, bool motionBlur, const GfVec2d& shutter,
+        const GfVec3d& cameraPos, const GfVec3d& entityPos);
     PrimvarDataSourceMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData,
         const GlmFrameData *frameData,
@@ -493,31 +495,86 @@ bool GetShutterFromRenderSettings(
 }
 
 /*
+ * Returns the global transformation matrix for the prim at the given
+ * path.
+ */
+GfMatrix4d GetPrimWorldMatrix(
+    const HdSceneIndexBaseRefPtr& inputScene, SdfPath path)
+{
+    GfMatrix4d mtx(1);
+
+    while (!path.IsEmpty()) {
+        HdSceneIndexPrim prim = inputScene->GetPrim(path);
+        if (!prim) {
+            break;
+        }
+        HdXformSchema xform =
+            HdXformSchema::GetFromParent(prim.dataSource);
+        if (!xform) {
+            break;
+        }
+        HdMatrixDataSourceHandle mtxDs = xform.GetMatrix();
+        if (mtxDs) {
+            mtx *= mtxDs->GetTypedValue(0);
+        }
+        HdBoolDataSourceHandle resetDs = xform.GetResetXformStack();
+        if (resetDs && resetDs->GetTypedValue(0)) {
+            break;
+        }
+        path = path.GetParentPath();
+    }
+
+    return mtx;
+}
+
+/*
+ * Returns the path of the primary camera, if there is one.
+ */
+SdfPath GetCameraPath(const HdSceneIndexBaseRefPtr& inputScene)
+{
+    const HdSceneGlobalsSchema globals =
+        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
+
+    if (!globals) {
+        return SdfPath();
+    }
+
+    HdPathDataSourceHandle camPathDS = globals.GetPrimaryCameraPrim();
+    if (!camPathDS) {
+        return SdfPath();
+    }
+
+    return camPathDS->GetTypedValue(0);
+}
+
+/*
+ * Returns the location in world coordinates of the primary camera, if
+ * there is one, or the origin if not.
+ */
+GfVec3d GetCameraPos(const HdSceneIndexBaseRefPtr& inputScene)
+{
+    const SdfPath camPath = GetCameraPath(inputScene);
+    if (camPath.IsEmpty()) {
+        return GfVec3d(0);
+    }
+    GfMatrix4d mtx = GetPrimWorldMatrix(inputScene, camPath);
+    return mtx.ExtractTranslation();
+}
+
+/*
  * Fetches and returns the shutter interval from the primary camera
  * prim, if there is one. Returns true if there is, false if not.
  */
 bool GetShutterFromCamera(
     const HdSceneIndexBaseRefPtr& inputScene, GfVec2d *shutter)
 {
-    const HdSceneGlobalsSchema globals =
-        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
-    if (!globals) {
+    SdfPath path = GetCameraPath(inputScene);
+    if (path.IsEmpty()) {
         return false;
     }
 
-    HdPathDataSourceHandle camPathDS = globals.GetPrimaryCameraPrim();
-    if (!camPathDS) {
-        return false;
-    }
-
-    const SdfPath camPath = camPathDS->GetTypedValue(0);
-    if (camPath.IsEmpty()) {
-        return false;
-    }
-
-    const HdSceneIndexPrim camPrim = inputScene->GetPrim(camPath);
-    HdCameraSchema cam =
-        HdCameraSchema::GetFromParent(camPrim.dataSource);
+    HdSceneIndexPrim prim = inputScene->GetPrim(path);
+    HdCameraSchema cam = HdCameraSchema::GetFromParent(prim.dataSource);
     if (!cam) {
         return false;
     }
@@ -535,9 +592,26 @@ bool GetShutterFromCamera(
 void GolaemProcedural::PopulateCrowd(
     const HdSceneIndexBaseRefPtr& inputScene)
 {
-    // fetch current frame and motion blur settings
+    // fetch the current frame number
 
     double frame = GetCurrentFrame(inputScene);
+
+    // fetch the camera position and the root prim's transformation
+    // matrix, for LOD computation
+
+    GfVec3d cameraPos;
+    GfMatrix4d rootMtx;
+
+    if (_args.enableLod) {
+        cameraPos = GetCameraPos(inputScene);
+        rootMtx = GetPrimWorldMatrix(inputScene, _GetProceduralPrimPath());
+    } else {
+        cameraPos.Set(0, 0, 0);
+        rootMtx.SetIdentity();
+    }
+
+    // fetch the shutter interval from the render settings or from the
+    // primary camera, if motion blur is enabled
 
     bool motionBlur = false;
     GfVec2d shutter;
@@ -622,22 +696,31 @@ void GolaemProcedural::PopulateCrowd(
                 continue;
             }
 
-            // save data needed for rendering bounding boxes
+            // fetch the position of this entity, if needed
 
-            if (_args.displayMode == golaemTokens->bbox) {
+            int frameDataIndex = -1;
+            GfVec3f localPos(0);
+            GfVec3d globalPos(0);
 
-                // fetch animation data: the root bone's position,
-                // orientation and size
-
+            if (_args.displayMode == golaemTokens->bbox
+                || _args.enableLod) {
                 const auto& animData = character->_converterMapping;
                 const auto *rootBone =
                     animData._skeletonDescription->getRootBone();
                 auto rootBoneIndex = rootBone->getSpecificBoneIndex();
                 auto boneCount = simData->_boneCount[entityType];
 
-                int frameDataIndex = rootBoneIndex
+                frameDataIndex = rootBoneIndex
                     + simData->_iBoneOffsetPerEntityType[entityType]
                     + simData->_indexInEntityType[ientity] * boneCount;
+
+                localPos.Set(
+                    frameData->_bonePositions[frameDataIndex]);
+            }
+
+            // save data needed for rendering bounding boxes
+
+            if (_args.displayMode == golaemTokens->bbox) {
 
                 // the rendering bounding box is huge, so we use the
                 // "perception shape" instead (used for obstacle
@@ -665,8 +748,7 @@ void GolaemProcedural::PopulateCrowd(
 
                 entity.extent.Set(extent.getFloatValues());
                 entity.scale = simData->_scales[ientity];
-                entity.pos.Set(
-                    frameData->_bonePositions[frameDataIndex]);
+                entity.pos = localPos;
                 entity.quat.SetReal(quat.w);
                 entity.quat.SetImaginary(quat.x, quat.y, quat.z);
             }
@@ -674,14 +756,19 @@ void GolaemProcedural::PopulateCrowd(
             // save data needed for rendering meshes
 
             else {
-                _meshEntities.resize(_meshEntities.size() + 1);
+                if (_args.enableLod) {
+                    globalPos = rootMtx.Transform(localPos);
+                }
+ 
+               _meshEntities.resize(_meshEntities.size() + 1);
                 MeshEntityData& entity = _meshEntities.back();
 
                 entity.crowdFieldIndex = ifield;
                 entity.entityIndex = ientity;
                 entity.meshes = GenerateMeshes(
                     cachedSimulation, frame, ientity, motionBlur,
-                    shutter);
+                    shutter, cameraPos, globalPos);
+
             }
         }
     }
@@ -807,7 +894,8 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 std::vector<std::shared_ptr<FileMeshAdapter>>
 GolaemProcedural::GenerateMeshes(
     CachedSimulation& cachedSimulation, double frame, int entityIndex,
-    bool motionBlur, const GfVec2d& shutter)
+    bool motionBlur, const GfVec2d& shutter,
+    const GfVec3d& cameraPos, const GfVec3d& entityPos)
 {
     std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
 
@@ -837,7 +925,22 @@ GolaemProcedural::GenerateMeshes(
     inputData._entityId = simData->_entityIds[entityIndex];
     inputData._dirMapRules = _dirmapRules;
     inputData._geometryTag = short(_args.geometryTag);
-    inputData._geoFileIndex = 0;
+
+    glm::Vector3 glmCamPos, glmEntPos;
+
+    if (_args.enableLod) {
+        glmCamPos[0] = static_cast<float>(cameraPos[0]);
+        glmCamPos[1] = static_cast<float>(cameraPos[1]);
+        glmCamPos[2] = static_cast<float>(cameraPos[2]);
+        glmEntPos[0] = static_cast<float>(entityPos[0]);
+        glmEntPos[1] = static_cast<float>(entityPos[1]);
+        glmEntPos[2] = static_cast<float>(entityPos[2]);
+        inputData._enableLOD = true;
+        inputData._entityPos = glmEntPos.getFloatValues();
+        inputData._cameraWorldPosition = glmCamPos.getFloatValues();
+    } else {
+        inputData._geoFileIndex = 0;
+    }
 
     glm::Array<float> shutterOffsets;
 
@@ -878,6 +981,11 @@ GolaemProcedural::GenerateMeshes(
                   << '\n';
         return adapters;
     }
+
+    /*
+    std::cout << "entity " << entityIndex << ": geometry index "
+              << outputData._geometryFileIndexes[0] << '\n';
+    */
 
     if (outputData._geoType != glm::crowdio::GeometryType::GCG) {
         std::cerr << "geometry type is not GCG, ignoring\n";
@@ -980,25 +1088,21 @@ GolaemProcedural::UpdateDependencies(
     SdfPath primPath = HdSceneGlobalsSchema::GetDefaultPrimPath();
     result[primPath] = HdSceneGlobalsSchema::GetCurrentFrameLocator();
 
+    // no motion blur or LOD in bbox display mode
+
+    if (_args.displayMode == golaemTokens->bbox) {
+        return result;
+    }
+
     // update when the camera changes if motion blur or LOD is enabled
     // (and note the path of the camera prim for later)
-
-    const HdSceneGlobalsSchema globals =
-        HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
 
     SdfPath camPath;
 
     if (_args.enableMotionBlur || _args.enableLod) {
         result[primPath].insert(
             HdSceneGlobalsSchema::GetPrimaryCameraPrimLocator());
-
-        if (globals) {
-            HdPathDataSourceHandle camPathDS =
-                globals.GetPrimaryCameraPrim();
-            if (camPathDS) {
-                camPath = camPathDS->GetTypedValue(0);
-            }
-        }
+        camPath = GetCameraPath(inputScene);
     }
 
     // update when the camera moves if LOD is enabled
@@ -1019,6 +1123,9 @@ GolaemProcedural::UpdateDependencies(
     if (_args.enableMotionBlur) {
         result[primPath].insert(
             HdSceneGlobalsSchema::GetActiveRenderSettingsPrimLocator());
+
+        const HdSceneGlobalsSchema globals =
+            HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
 
         if (globals) {
             HdPathDataSourceHandle rsPrimDS =
