@@ -88,15 +88,12 @@ TF_DEFINE_PRIVATE_TOKENS(
     (materialPath)
     (materialAssignMode)
     (enableMotionBlur)
-    (lodMode)
+    (enableLod)
     (bbox)
     (mesh)
     (bySurfaceShader)
     (byShadingGroup)
     (none)
-    (disabled)
-    ((staticLOD, "static"))
-    ((dynamicLOD, "dynamic"))
 );
 
 /*
@@ -122,7 +119,7 @@ struct Args
           materialPath("Materials"),
           materialAssignMode(golaemTokens->byShadingGroup),
           enableMotionBlur(false),
-          lodMode(golaemTokens->disabled)
+          enableLod(false)
         {}
 
     VtTokenArray crowdFields;
@@ -140,7 +137,7 @@ struct Args
     SdfPath materialPath;
     TfToken materialAssignMode;
     bool enableMotionBlur;
-    TfToken lodMode;
+    bool enableLod;
 };
 
 /*
@@ -343,7 +340,7 @@ Args GolaemProcedural::GetArgs(
         primvars, golaemTokens->enableMotionBlur,
         result.enableMotionBlur);
     GetTypedPrimvar(
-        primvars, golaemTokens->lodMode, result.lodMode);
+        primvars, golaemTokens->enableLod, result.enableLod);
 
     // a primvar cannot be a relationship, so we convert the
     // materialPath argument (a token) to an SdfPath, which can be
@@ -983,16 +980,15 @@ GolaemProcedural::UpdateDependencies(
     SdfPath primPath = HdSceneGlobalsSchema::GetDefaultPrimPath();
     result[primPath] = HdSceneGlobalsSchema::GetCurrentFrameLocator();
 
-    // update when the camera changes if motion blur or dynamic LOD is
-    // enabled (and note the path of the camera prim for later)
+    // update when the camera changes if motion blur or LOD is enabled
+    // (and note the path of the camera prim for later)
 
     const HdSceneGlobalsSchema globals =
         HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
 
     SdfPath camPath;
 
-    if (_args.enableMotionBlur
-        || _args.lodMode == golaemTokens->dynamicLOD) {
+    if (_args.enableMotionBlur || _args.enableLod) {
         result[primPath].insert(
             HdSceneGlobalsSchema::GetPrimaryCameraPrimLocator());
 
@@ -1005,9 +1001,9 @@ GolaemProcedural::UpdateDependencies(
         }
     }
 
-    // update when the camera moves if dynamic LOD is enabled
+    // update when the camera moves if LOD is enabled
 
-    if (_args.lodMode == golaemTokens->dynamicLOD && !camPath.IsEmpty()) {
+    if (_args.enableLod && !camPath.IsEmpty()) {
         TF_DEBUG_MSG(
             GLMHYDRA_DEPENDENCIES,
             "add dependency on camera xform: %s\n",
@@ -1059,14 +1055,14 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
     const DependencyMap& dirtiedDependencies,
     HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
 {
-    if (TfDebug::IsEnabled(GLMHYDRA_DEPENDENCIES)) {
+    if (TfDebug::IsEnabled(GLMHYDRA_DEPENDENCIES)
+        && dirtiedDependencies.size() > 0) {
         std::ostringstream strm;
-        for (auto it = dirtiedDependencies.begin();
-             it != dirtiedDependencies.end(); ++it) {
-            strm << "dirtied prim: " << it->first << " "
-                 << it->second << '\n';
+        for (const auto& pair: dirtiedDependencies) {
+            strm << "dirtied prim: " << pair.first << " "
+                 << pair.second << '\n';
         }
-        TF_DEBUG_MSG(GLMHYDRA_DEPENDENCIES, strm.str());
+        TfDebug::Helper().Msg(strm.str());
     }
 
     // fetch arguments (primvars) the first time only (we assume they
