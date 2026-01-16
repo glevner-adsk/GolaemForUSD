@@ -87,11 +87,16 @@ TF_DEFINE_PRIVATE_TOKENS(
     (dirmap)
     (materialPath)
     (materialAssignMode)
+    (enableMotionBlur)
+    (lodMode)
     (bbox)
     (mesh)
     (bySurfaceShader)
     (byShadingGroup)
     (none)
+    (disabled)
+    ((staticLOD, "static"))
+    ((dynamicLOD, "dynamic"))
 );
 
 /*
@@ -115,7 +120,9 @@ struct Args
           displayMode(golaemTokens->mesh),
           geometryTag(0),
           materialPath("Materials"),
-          materialAssignMode(golaemTokens->byShadingGroup)
+          materialAssignMode(golaemTokens->byShadingGroup),
+          enableMotionBlur(false),
+          lodMode(golaemTokens->disabled)
         {}
 
     VtTokenArray crowdFields;
@@ -132,6 +139,8 @@ struct Args
     TfToken dirmap;
     SdfPath materialPath;
     TfToken materialAssignMode;
+    bool enableMotionBlur;
+    TfToken lodMode;
 };
 
 /*
@@ -330,6 +339,11 @@ Args GolaemProcedural::GetArgs(
     GetTypedPrimvar(
         primvars, golaemTokens->materialAssignMode,
         result.materialAssignMode);
+    GetTypedPrimvar(
+        primvars, golaemTokens->enableMotionBlur,
+        result.enableMotionBlur);
+    GetTypedPrimvar(
+        primvars, golaemTokens->lodMode, result.lodMode);
 
     // a primvar cannot be a relationship, so we convert the
     // materialPath argument (a token) to an SdfPath, which can be
@@ -530,18 +544,21 @@ void GolaemProcedural::PopulateCrowd(
 
     bool motionBlur = false;
     GfVec2d shutter;
-    if (GetShutterFromRenderSettings(inputScene, &shutter)) {
-        TF_DEBUG_MSG(
-            GLMHYDRA_MOTION_BLUR,
-            "motion blur shutter from render settings: %g %g\n",
-            shutter[0], shutter[1]);
-        motionBlur = (shutter[0] < shutter[1]);
-    } else if (GetShutterFromCamera(inputScene, &shutter)) {
-        TF_DEBUG_MSG(
-            GLMHYDRA_MOTION_BLUR,
-            "motion blur shutter from camera: %g %g\n",
-            shutter[0], shutter[1]);
-        motionBlur = (shutter[0] < shutter[1]);
+
+    if (_args.enableMotionBlur) {
+        if (GetShutterFromRenderSettings(inputScene, &shutter)) {
+            TF_DEBUG_MSG(
+                GLMHYDRA_MOTION_BLUR,
+                "motion blur shutter from render settings: %g %g\n",
+                shutter[0], shutter[1]);
+            motionBlur = (shutter[0] < shutter[1]);
+        } else if (GetShutterFromCamera(inputScene, &shutter)) {
+            TF_DEBUG_MSG(
+                GLMHYDRA_MOTION_BLUR,
+                "motion blur shutter from camera: %g %g\n",
+                shutter[0], shutter[1]);
+            motionBlur = (shutter[0] < shutter[1]);
+        }
     }
 
     // iterate over entities in crowd fields
@@ -961,49 +978,74 @@ GolaemProcedural::UpdateDependencies(
 {
     DependencyMap result;
 
-    // call Update() when the current frame changes, the render
-    // settings change (for motion blur), or the primary camera
-    // changes (for LODs and motion blur)
+    // always call Update() when the current frame changes
 
-    result[HdSceneGlobalsSchema::GetDefaultPrimPath()] = {
-        HdSceneGlobalsSchema::GetCurrentFrameLocator(),
-        HdSceneGlobalsSchema::GetActiveRenderSettingsPrimLocator(),
-        HdSceneGlobalsSchema::GetPrimaryCameraPrimLocator()
-    };
+    SdfPath primPath = HdSceneGlobalsSchema::GetDefaultPrimPath();
+    result[primPath] = HdSceneGlobalsSchema::GetCurrentFrameLocator();
 
-    // call Update() when the motion blur shutter interval changes: if
-    // there is an active render settings prim, get the shutter
-    // interval from there, otherwise look for a primary camera and
-    // use its shutter settings
+    // update when the camera changes if motion blur or dynamic LOD is
+    // enabled (and note the path of the camera prim for later)
 
     const HdSceneGlobalsSchema globals =
         HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
 
-    if (globals) {
-        HdPathDataSourceHandle rsPrimDS =
-            globals.GetActiveRenderSettingsPrim();
-        if (rsPrimDS) {
-            const SdfPath rsPath = rsPrimDS->GetTypedValue(0);
-            if (!rsPath.IsEmpty()) {
-                result[rsPath] = {
-                    HdRenderSettingsSchema::GetShutterIntervalLocator()
-                };
-            }
-        } else {
+    SdfPath camPath;
+
+    if (_args.enableMotionBlur
+        || _args.lodMode == golaemTokens->dynamicLOD) {
+        result[primPath].insert(
+            HdSceneGlobalsSchema::GetPrimaryCameraPrimLocator());
+
+        if (globals) {
             HdPathDataSourceHandle camPathDS =
                 globals.GetPrimaryCameraPrim();
             if (camPathDS) {
-                const SdfPath camPath = camPathDS->GetTypedValue(0);
-                if (!camPath.IsEmpty()) {
+                camPath = camPathDS->GetTypedValue(0);
+            }
+        }
+    }
+
+    // update when the camera moves if dynamic LOD is enabled
+
+    if (_args.lodMode == golaemTokens->dynamicLOD && !camPath.IsEmpty()) {
+        TF_DEBUG_MSG(
+            GLMHYDRA_DIRTY_PRIMS,
+            "add dependency on camera xform: %s\n",
+            camPath.GetAsString().c_str());
+        result[camPath].insert(HdXformSchema::GetDefaultLocator());
+    }
+
+    // if motion blur is enabled, update when the render settings
+    // change or when the shutter interval changes: if there is an
+    // active render settings prim, get the shutter interval from
+    // there, otherwise use the primary camera's shutter settings
+
+    if (_args.enableMotionBlur) {
+        result[primPath].insert(
+            HdSceneGlobalsSchema::GetActiveRenderSettingsPrimLocator());
+
+        if (globals) {
+            HdPathDataSourceHandle rsPrimDS =
+                globals.GetActiveRenderSettingsPrim();
+            if (rsPrimDS) {
+                const SdfPath rsPath = rsPrimDS->GetTypedValue(0);
+                if (!rsPath.IsEmpty()) {
                     TF_DEBUG_MSG(
-                        GLMHYDRA_MOTION_BLUR,
-                        "add dependency on camera shutter: %s\n",
-                        camPath.GetAsString().c_str());
-                    result[camPath] = {
-                        HdCameraSchema::GetShutterOpenLocator(),
-                        HdCameraSchema::GetShutterCloseLocator()
+                        GLMHYDRA_DIRTY_PRIMS,
+                        "add dependency on render settings shutter\n");
+                    result[rsPath] = {
+                        HdRenderSettingsSchema::GetShutterIntervalLocator()
                     };
                 }
+            } else if (!camPath.IsEmpty()) {
+                TF_DEBUG_MSG(
+                    GLMHYDRA_DIRTY_PRIMS,
+                    "add dependency on camera shutter: %s\n",
+                    camPath.GetAsString().c_str());
+                result[camPath].insert(
+                    HdCameraSchema::GetShutterOpenLocator());
+                result[camPath].insert(
+                    HdCameraSchema::GetShutterCloseLocator());
             }
         }
     }
