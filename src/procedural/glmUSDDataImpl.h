@@ -10,6 +10,8 @@
 #include "glmUSDData.h"
 
 #include <glmSimulationCacheFactory.h>
+#include <glmSmartPointer.h>
+#include <glmMap.h>
 
 namespace glm
 {
@@ -42,20 +44,14 @@ namespace glm
         class GolaemUSD_DataImpl
         {
         private:
-            // cached data for each entity
-            struct EntityData
+            struct EntityData;
+            struct EntityFrameData : public glm::ReferenceCounter
             {
-                std::map<TfToken, size_t, TfTokenFastArbitraryLessThan> ppAttrIndexes;
-                std::map<TfToken, size_t, TfTokenFastArbitraryLessThan> shaderAttrIndexes;
+                typedef SmartPointer<EntityFrameData> SP;
 
-                SdfPath entityPath;
+                bool enabled = true; // can vary during simulation (kill, emit)
 
-                double computedTimeSample = 0;
-                bool excluded = false; // excluded by layout - the entity will always be empty
-                bool enabled = true;   // can vary during simulation (kill, emit)
-                uint32_t bonePositionOffset = 0;
-                glm::Mutex* cachedSimulationLock = NULL;
-                glm::Mutex* entityComputeLock = NULL; // do not allow simultaneous computes of the same entity
+                GfVec3f pos{0, 0, 0};
 
                 glm::PODArray<int> intShaderAttrValues;
                 glm::PODArray<float> floatShaderAttrValues;
@@ -65,84 +61,130 @@ namespace glm
                 glm::PODArray<float> floatPPAttrValues;
                 glm::Array<GfVec3f> vectorPPAttrValues;
 
+                size_t geometryFileIdx = 0;
+                TfToken lodName = TfToken("");
+
+                SmartPointer<EntityData> entityData = NULL;
+            };
+
+            // cached data for each entity
+            struct EntityData : public glm::ReferenceCounter
+            {
+                typedef SmartPointer<EntityData> SP;
+
+                std::map<TfToken, size_t, TfTokenFastArbitraryLessThan> ppAttrIndexes;
+                std::map<TfToken, size_t, TfTokenFastArbitraryLessThan> shaderAttrIndexes;
+
+                SdfPath entityPath;
+
+                bool excluded = false; // excluded by layout - the entity will always be empty
+                size_t cfIdx = 0;      // index of the crowd field this entity belongs to
+                uint32_t bonePositionOffset = 0;
+                glm::Mutex* cachedSimulationLock = NULL;
+                glm::Mutex* entityComputeLock = NULL; // do not allow simultaneous computes of the same entity
+
                 glm::crowdio::InputEntityGeoData inputGeoData;
                 glm::crowdio::CachedSimulation* cachedSimulation = NULL;
 
-                GfVec3f pos{0, 0, 0};
-
                 GfVec3f extent{0, 0, 0};
 
-                size_t geometryFileIdx = 0;
+                glm::GlmMap<double, EntityFrameData::SP> frameDataMap;
 
-                TfToken lodName = TfToken("");
+                size_t defaultGeometryFileIdx = 0;
+                TfToken defaultLodName = TfToken("");
 
                 ~EntityData();
                 void initEntityLock();
+
+                template <class FrameDataType>
+                SmartPointer<FrameDataType> getFrameData(const double& frame, size_t cachedFramesCount);
             };
 
-            struct SkinMeshData;
-            struct SkinMeshLodData;
-            struct SkinMeshEntityData : public EntityData
+            struct SkinMeshTemplateData : public glm::ReferenceCounter
             {
-                glm::PODArray<SkinMeshLodData*> meshLodData; // used when lod is enabled (glmLodMode > 0)
-                glm::PODArray<SkinMeshData*> meshData;       // used when no lod (glmLodMode == 0)
+                typedef SmartPointer<SkinMeshTemplateData> SP;
+
+                VtIntArray faceVertexCounts;
+                VtIntArray faceVertexIndices;
+                glm::Array<VtVec2fArray> uvSets; // stored by polygon vertex
+                GlmString meshAlias;
+                VtVec3fArray defaultPoints;
+                VtVec3fArray defaultNormals;
+                // int normalsCount; // not needed, = faceVertexIndices.size();
+                SdfPathListOp materialPath;
             };
 
-            struct SkelAnimData;
-            struct SkelEntityData : public EntityData
+            struct SkinMeshData : public glm::ReferenceCounter
             {
-                SkelAnimData* animData = NULL;
-                SdfReferenceListOp referencedUsdCharacter;
-                SdfVariantSelectionMap geoVariants;
-
-                SdfPathListOp animationSourcePath;
-                SdfPathListOp skeletonPath;
-            };
-
-            struct SkinMeshLodData;
-            struct SkinMeshTemplateData;
-            struct SkinMeshData
-            {
-                SkinMeshLodData* lodData = NULL;       // used when lod is enabled (glmLodMode > 0)
-                SkinMeshEntityData* entityData = NULL; // used when no lod (glmLodMode == 0)
+                typedef SmartPointer<SkinMeshData> SP;
 
                 // these parameters are animated
                 VtVec3fArray points;
                 VtVec3fArray normals; // stored by polygon vertex
 
-                const SkinMeshTemplateData* templateData = NULL;
-                SdfPath meshPath;
+                SkinMeshTemplateData::SP templateData = NULL;
             };
 
-            struct SkinMeshTemplateData
+            struct SkinMeshLodData : public glm::ReferenceCounter
             {
-                VtIntArray faceVertexCounts;
-                VtIntArray faceVertexIndices;
-                glm::Array<VtVec2fArray> uvSets; // stored by polygon vertex
-                GlmString meshAlias;
-                int pointsCount;
-                // int normalsCount; // not needed, = faceVertexIndices.size();
-                SdfPathListOp materialPath;
-            };
+                typedef SmartPointer<SkinMeshLodData> SP;
 
-            struct SkinMeshLodData
-            {
-                glm::PODArray<SkinMeshData*> meshData;
-                SkinMeshEntityData* entityData = NULL;
+                std::map<std::pair<int, int>, SkinMeshData::SP> meshData;
+                EntityData::SP entityData = NULL;
                 bool enabled = false;
-                SdfPath lodPath;
             };
 
-            struct SkelAnimData
+            struct SkinMeshEntityFrameData : public EntityFrameData
             {
-                VtTokenArray joints;
-                VtQuatfArray rotations;
-                VtVec3hArray scales;
+                typedef SmartPointer<SkinMeshEntityFrameData> SP;
+
+                glm::Array<SkinMeshLodData::SP> meshLodData;
+            };
+
+            struct SkinMeshEntityData : public EntityData
+            {
+                typedef SmartPointer<SkinMeshEntityData> SP;
+
+                glm::PODArray<int> lodEnabled; // useful when using static lod
+            };
+
+            struct SkelEntityData : public EntityData
+            {
+                typedef SmartPointer<SkelEntityData> SP;
+
+                SdfReferenceListOp referencedUsdCharacter;
+                SdfVariantSelectionMap geoVariants;
+
+                SdfPathListOp animationSourcePath;
+                SdfPathListOp skeletonPath;
+
                 bool scalesAnimated = false;
                 uint32_t boneSnsOffset = 0;
+            };
+
+            struct SkelEntityFrameData : public EntityFrameData
+            {
+                typedef SmartPointer<SkelEntityFrameData> SP;
+
+                VtQuatfArray rotations;
+                VtVec3hArray scales;
 
                 VtVec3fArray translations;
-                SkelEntityData* entityData = NULL;
+            };
+
+            struct SkinMeshLodMapData
+            {
+                SkinMeshEntityData::SP entityData;
+                size_t lodIndex;
+            };
+
+            struct SkinMeshMapData
+            {
+                SkinMeshEntityData::SP entityData;
+                size_t lodIndex;
+                int gchaMeshId;
+                int meshMaterialIndex;
+                SkinMeshTemplateData::SP templateData;
             };
 
             struct UsdWrapper
@@ -168,7 +210,8 @@ namespace glm
             crowdio::SimulationCacheFactory* _factory;
             glm::Array<glm::PODArray<int>> _sgToSsPerChar;
             glm::Array<PODArray<int>> _snsIndicesPerChar;
-            glm::Array<glm::Array<std::map<std::pair<int, int>, SkinMeshTemplateData>>> _skinMeshTemplateDataPerCharPerLod;
+            glm::Array<VtTokenArray> _jointsPerChar;
+            glm::Array<glm::Array<std::map<std::pair<int, int>, SkinMeshTemplateData::SP>>> _skinMeshTemplateDataPerCharPerGeomFile;
 
             glm::Array<GlmString> _shaderAttrTypes;
             glm::Array<VtValue> _shaderAttrDefaultValues;
@@ -192,17 +235,16 @@ namespace glm
             // make up the cube layout hierarchy.
             TfHashMap<SdfPath, std::vector<TfToken>, SdfPath::Hash> _primChildNames;
 
-            TfHashMap<SdfPath, SkinMeshEntityData, SdfPath::Hash> _skinMeshEntityDataMap;
+            TfHashMap<SdfPath, EntityData::SP, SdfPath::Hash> _entityDataMap;
 
-            TfHashMap<SdfPath, SkelEntityData, SdfPath::Hash> _skelEntityDataMap;
+            TfHashMap<SdfPath, SkinMeshMapData, SdfPath::Hash> _skinMeshDataMap;
+            TfHashMap<SdfPath, SkinMeshLodMapData, SdfPath::Hash> _skinMeshLodDataMap;
 
-            TfHashMap<SdfPath, SkinMeshData, SdfPath::Hash> _skinMeshDataMap;
-
-            TfHashMap<SdfPath, SkinMeshLodData, SdfPath::Hash> _skinMeshLodDataMap;
-
-            TfHashMap<SdfPath, SkelAnimData, SdfPath::Hash> _skelAnimDataMap;
+            TfHashMap<SdfPath, SkelEntityData::SP, SdfPath::Hash> _skelAnimDataMap;
 
             glm::PODArray<glm::Mutex*> _cachedSimulationLocks;
+
+            glm::Array<glm::Array<PODArray<size_t>>> _globalToSpecificShaderAttrIdxPerCharPerCrowdField;
 
             UsdWrapper _usdWrapper;
 
@@ -278,33 +320,55 @@ namespace glm
             bool _HasPropertyInterpolation(const SdfPath& path, VtValue* value) const;
 
             SdfPath _CreateHierarchyFor(const glm::GlmString& hierarchy, const SdfPath& parentPath, GlmMap<GlmString, SdfPath>& existingPaths);
-            void _ComputeSkelEntity(SkelEntityData* entityData, double frame);
-            void _ComputeSkinMeshEntity(SkinMeshEntityData* entityData, double frame);
-            void _DoComputeSkinMeshEntity(SkinMeshEntityData* entityData);
-            void _ComputeEntity(EntityData* entityData);
-            void _InvalidateEntity(EntityData* entityData);
-            void _getCharacterExtent(const EntityData* entityData, GfVec3f& extent) const;
-            void _ComputeBboxData(SkinMeshEntityData* entityData);
+            SkelEntityFrameData::SP _ComputeSkelEntity(EntityData::SP entityData, double frame);
+            SkinMeshEntityFrameData::SP _ComputeSkinMeshEntity(EntityData::SP entityData, double frame);
+            void _ComputeEntity(EntityFrameData::SP entityFrameData, double frame);
+            void _InvalidateEntity(EntityFrameData::SP entityFrameData);
+            void _getCharacterExtent(EntityData::SP entityData, GfVec3f& extent) const;
+            void _ComputeBboxData(SkinMeshEntityData::SP entityData);
             void _ComputeSkinMeshTemplateData(
-                std::map<std::pair<int, int>, SkinMeshTemplateData>& lodTemplateData,
+                std::map<std::pair<int, int>, SkinMeshTemplateData::SP>& lodTemplateData,
                 const glm::crowdio::InputEntityGeoData& inputGeoData,
                 const glm::crowdio::OutputEntityGeoData& outputData);
             void _InitSkinMeshData(
                 const SdfPath& parentPath,
-                SkinMeshEntityData* entityData,
-                SkinMeshLodData* lodData,
-                glm::PODArray<SkinMeshData*>& meshDataArray,
-                const std::map<std::pair<int, int>, SkinMeshTemplateData>& templateDataPerMesh,
+                SkinMeshEntityData::SP entityData,
+                size_t lodIndex,
+                const std::map<std::pair<int, int>, SkinMeshTemplateData::SP>& templateDataPerMesh,
                 const glm::PODArray<int>& gchaMeshIds,
                 const glm::PODArray<int>& meshAssetMaterialIndices);
 
-            bool _QueryEntityAttributes(const EntityData* genericEntityData, const TfToken& nameToken, const double& frame, VtValue* value);
+            bool _QueryEntityAttributes(EntityFrameData::SP entityFrameData, const TfToken& nameToken, VtValue* value);
         };
 
         //-----------------------------------------------------------------------------
         inline const Time& GolaemUSD_DataImpl::UsdWrapper::getCurrentFrame() const
         {
             return _currentFrame;
+        }
+
+        //-----------------------------------------------------------------------------
+        template <class FrameDataType>
+        SmartPointer<FrameDataType> GolaemUSD_DataImpl::EntityData::getFrameData(const double& frame, size_t cachedFramesCount)
+        {
+            SmartPointer<FrameDataType> frameData = nullptr;
+            auto itFrameData = frameDataMap.find(frame);
+            if (itFrameData == frameDataMap.end())
+            {
+                frameData = new FrameDataType();
+
+                // remove the oldest frame data if we exceed cachedFramesCount
+                if (frameDataMap.size() >= cachedFramesCount)
+                {
+                    frameDataMap.erase(frameDataMap.begin());
+                }
+                frameDataMap[frame] = frameData;
+            }
+            else
+            {
+                frameData = glm::staticCast<FrameDataType>(itFrameData.getValue());
+            }
+            return frameData;
         }
     } // namespace usdplugin
 } // namespace glm

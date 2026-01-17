@@ -1,8 +1,8 @@
 /***************************************************************************
-*                                                                          *
-*  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
-*                                                                          *
-***************************************************************************/
+ *                                                                          *
+ *  Copyright (C) Golaem S.A.  All Rights Reserved.                         *
+ *                                                                          *
+ ***************************************************************************/
 
 #include "glmUSDFileFormat.h"
 #include "glmUSDData.h"
@@ -11,11 +11,11 @@ USD_INCLUDES_START
 #include <pxr/pxr.h>
 #include <pxr/usd/pcp/dynamicFileFormatContext.h>
 #if PXR_VERSION > 2508
-#   include <pxr/usd/sdf/usdaFileFormat.h>
-#   define USDA_TOKENS SdfUsdaFileFormatTokens
+#include <pxr/usd/sdf/usdaFileFormat.h>
+#define USDA_TOKENS SdfUsdaFileFormatTokens
 #else
-#   include <pxr/usd/usd/usdaFileFormat.h>
-#   define USDA_TOKENS UsdUsdaFileFormatTokens
+#include <pxr/usd/usd/usdaFileFormat.h>
+#define USDA_TOKENS UsdUsdaFileFormatTokens
 #endif
 USD_INCLUDES_END
 
