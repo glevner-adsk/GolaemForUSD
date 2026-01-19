@@ -1,6 +1,5 @@
 /*
  * TODO:
- * - specify extents for mesh prims
  * - FBX support
  * - skeleton display mode
  */
@@ -8,6 +7,7 @@
 #include <pxr/imaging/hdGp/generativeProceduralPluginRegistry.h>
 
 #include <pxr/imaging/hd/cameraSchema.h>
+#include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/materialBindingsSchema.h>
 #include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/meshTopologySchema.h>
@@ -162,6 +162,7 @@ struct MeshEntityData
     short crowdFieldIndex;
     short lodIndex;
     std::vector<std::shared_ptr<FileMeshAdapter>> meshes;
+    GfVec3d minExtent, maxExtent;
 };
 
 /*
@@ -210,7 +211,7 @@ private:
         CachedSimulation& cachedSimulation, double frame,
         int entityIndex, bool motionBlur, const GfVec2d& shutter,
         bool lodEnabled, const GfVec3d& cameraPos,
-        const GfVec3d& entityPos, int *lodLevel);
+        const GfVec3d& entityPos, size_t *lodLevel);
     PrimvarDataSourceMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData,
         const GlmFrameData *frameData,
@@ -768,15 +769,28 @@ void GolaemProcedural::PopulateCrowd(
  
                _meshEntities.resize(_meshEntities.size() + 1);
                 MeshEntityData& entity = _meshEntities.back();
+                size_t lodLevel;
 
                 entity.entityIndex = ientity;
                 entity.crowdFieldIndex = static_cast<short>(ifield);
-                int lodLevel;
                 entity.meshes = GenerateMeshes(
                     cachedSimulation, frame, ientity, motionBlur,
                     shutter, lodEnabled, cameraPos, globalPos,
                     &lodLevel);
                 entity.lodIndex = static_cast<short>(lodLevel);
+
+                const glm::GeometryAsset *geoAsset =
+                    character->getGeometryAsset(
+                        static_cast<short>(_args.geometryTag),
+                        lodLevel);
+                const glm::Vector3& localExtent =
+                    geoAsset->_halfExtentsYUp;
+
+                GfVec3d extent(
+                    localExtent.x, localExtent.y, localExtent.z);
+                extent *= simData->_scales[ientity];
+                entity.minExtent = -extent + localPos;
+                entity.maxExtent = extent + localPos;
             }
         }
     }
@@ -904,7 +918,7 @@ GolaemProcedural::GenerateMeshes(
     CachedSimulation& cachedSimulation, double frame, int entityIndex,
     bool motionBlur, const GfVec2d& shutter, bool lodEnabled,
     const GfVec3d& cameraPos, const GfVec3d& entityPos,
-    int *lodLevel)
+    size_t *lodLevel)
 {
     std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
 
@@ -998,7 +1012,7 @@ GolaemProcedural::GenerateMeshes(
     }
 
     if (lodEnabled) {
-        *lodLevel = static_cast<int>(outputData._geometryFileIndexes[0]);
+        *lodLevel = outputData._geometryFileIndexes[0];
     } else {
         *lodLevel = 0;
     }
@@ -1240,7 +1254,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                 // including the crowd field, entity, mesh and LOD in
                 // the path enables us to tell Hydra that, if the same
                 // prim appears in two successive frames, only the
-                // points and normals will have changed
+                // points, normals and extent will have changed
 
                 sprintf_s(buffer, "c%de%dl%dm%zu",
                           entity.crowdFieldIndex, entity.entityIndex,
@@ -1253,7 +1267,8 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                     outputDirtiedPrims->emplace_back(
                         childPath, HdDataSourceLocatorSet({
                                 HdPrimvarsSchema::GetPointsLocator(),
-                                HdPrimvarsSchema::GetNormalsLocator()
+                                HdPrimvarsSchema::GetNormalsLocator(),
+                                HdExtentSchema::GetDefaultLocator()
                             }));
                 }
             }
@@ -1380,13 +1395,27 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
 
         size_t entityIndex = it->second.first;
         size_t meshIndex = it->second.second;
+        const MeshEntityData& meshEntity = _meshEntities[entityIndex];
+
+        HdContainerDataSourceHandle extentDataSource =
+            HdExtentSchema::Builder()
+            .SetMin(
+                HdRetainedTypedSampledDataSource<GfVec3d>::New(
+                    meshEntity.minExtent))
+            .SetMax(
+                HdRetainedTypedSampledDataSource<GfVec3d>::New(
+                    meshEntity.maxExtent))
+            .Build();
+
         const std::shared_ptr<FileMeshAdapter>& adapter =
-            _meshEntities[entityIndex].meshes[meshIndex];
+            meshEntity.meshes[meshIndex];
 
         result.primType = HdPrimTypeTokens->mesh;
         result.dataSource = HdRetainedContainerDataSource::New(
             HdXformSchemaTokens->xform,
             identityXform,
+            HdExtentSchemaTokens->extent,
+            extentDataSource,
             HdMeshSchemaTokens->mesh,
             adapter->GetMeshDataSource(),
             HdPrimvarsSchemaTokens->primvars,
