@@ -1,6 +1,5 @@
 /*
  * TODO:
- * - LODs
  * - specify extents for mesh prims
  * - FBX support
  * - skeleton display mode
@@ -210,8 +209,8 @@ private:
     std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
         int entityIndex, bool motionBlur, const GfVec2d& shutter,
-        const GfVec3d& cameraPos, const GfVec3d& entityPos,
-        int *lodLevel);
+        bool lodEnabled, const GfVec3d& cameraPos,
+        const GfVec3d& entityPos, int *lodLevel);
     PrimvarDataSourceMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData,
         const GlmFrameData *frameData,
@@ -550,17 +549,20 @@ SdfPath GetCameraPath(const HdSceneIndexBaseRefPtr& inputScene)
 }
 
 /*
- * Returns the location in world coordinates of the primary camera, if
- * there is one, or the origin if not.
+ * Fetches and returns the location in world coordinates of the
+ * primary camera, if there is one. Returns true if there is, false if
+ * not.
  */
-GfVec3d GetCameraPos(const HdSceneIndexBaseRefPtr& inputScene)
+bool GetCameraPos(
+    const HdSceneIndexBaseRefPtr& inputScene, GfVec3d *pos)
 {
     const SdfPath camPath = GetCameraPath(inputScene);
     if (camPath.IsEmpty()) {
-        return GfVec3d(0);
+        return false;
     }
     GfMatrix4d mtx = GetPrimWorldMatrix(inputScene, camPath);
-    return mtx.ExtractTranslation();
+    *pos = mtx.ExtractTranslation();
+    return true;
 }
 
 /*
@@ -601,13 +603,15 @@ void GolaemProcedural::PopulateCrowd(
     // fetch the camera position and the root prim's transformation
     // matrix, for LOD computation
 
+    bool lodEnabled;
     GfVec3d cameraPos;
     GfMatrix4d rootMtx;
 
     if (_args.enableLod) {
-        cameraPos = GetCameraPos(inputScene);
+        lodEnabled = GetCameraPos(inputScene, &cameraPos);
         rootMtx = GetPrimWorldMatrix(inputScene, _GetProceduralPrimPath());
     } else {
+        lodEnabled = false;
         cameraPos.Set(0, 0, 0);
         rootMtx.SetIdentity();
     }
@@ -705,7 +709,7 @@ void GolaemProcedural::PopulateCrowd(
             GfVec3d globalPos(0);
 
             if (_args.displayMode == golaemTokens->bbox
-                || _args.enableLod) {
+                || lodEnabled) {
                 const auto& animData = character->_converterMapping;
                 const auto *rootBone =
                     animData._skeletonDescription->getRootBone();
@@ -758,7 +762,7 @@ void GolaemProcedural::PopulateCrowd(
             // save data needed for rendering meshes
 
             else {
-                if (_args.enableLod) {
+                if (lodEnabled) {
                     globalPos = rootMtx.Transform(localPos);
                 }
  
@@ -770,7 +774,8 @@ void GolaemProcedural::PopulateCrowd(
                 int lodLevel;
                 entity.meshes = GenerateMeshes(
                     cachedSimulation, frame, ientity, motionBlur,
-                    shutter, cameraPos, globalPos, &lodLevel);
+                    shutter, lodEnabled, cameraPos, globalPos,
+                    &lodLevel);
                 entity.lodIndex = static_cast<short>(lodLevel);
             }
         }
@@ -897,7 +902,7 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 std::vector<std::shared_ptr<FileMeshAdapter>>
 GolaemProcedural::GenerateMeshes(
     CachedSimulation& cachedSimulation, double frame, int entityIndex,
-    bool motionBlur, const GfVec2d& shutter,
+    bool motionBlur, const GfVec2d& shutter, bool lodEnabled,
     const GfVec3d& cameraPos, const GfVec3d& entityPos,
     int *lodLevel)
 {
@@ -929,19 +934,20 @@ GolaemProcedural::GenerateMeshes(
     inputData._entityId = simData->_entityIds[entityIndex];
     inputData._dirMapRules = _dirmapRules;
     inputData._geometryTag = static_cast<short>(_args.geometryTag);
+    inputData._enableLOD = lodEnabled;
 
     glm::Vector3 glmCamPos, glmEntPos;
 
-    if (_args.enableLod) {
+    if (lodEnabled) {
         glmCamPos[0] = static_cast<float>(cameraPos[0]);
         glmCamPos[1] = static_cast<float>(cameraPos[1]);
         glmCamPos[2] = static_cast<float>(cameraPos[2]);
         glmEntPos[0] = static_cast<float>(entityPos[0]);
         glmEntPos[1] = static_cast<float>(entityPos[1]);
         glmEntPos[2] = static_cast<float>(entityPos[2]);
-        inputData._enableLOD = true;
         inputData._entityPos = glmEntPos.getFloatValues();
         inputData._cameraWorldPosition = glmCamPos.getFloatValues();
+        inputData._geoFileIndex = -1;
     } else {
         inputData._geoFileIndex = 0;
     }
@@ -991,7 +997,7 @@ GolaemProcedural::GenerateMeshes(
         return adapters;
     }
 
-    if (_args.enableLod) {
+    if (lodEnabled) {
         *lodLevel = static_cast<int>(outputData._geometryFileIndexes[0]);
     } else {
         *lodLevel = 0;
