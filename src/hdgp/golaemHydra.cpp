@@ -18,8 +18,6 @@
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/hd/xformSchema.h>
 
-#include <pxr/base/gf/quatf.h>
-#include <pxr/base/gf/rotation.h>
 #include <pxr/base/tf/debug.h>
 #include <pxr/base/tf/staticTokens.h>
 
@@ -149,7 +147,6 @@ struct BBoxEntityData
     GfVec3f extent;
     float scale;
     GfVec3f pos;
-    GfQuatf quat;
 };
 
 /*
@@ -728,27 +725,10 @@ void GolaemProcedural::PopulateCrowd(
             // save data needed for rendering bounding boxes
 
             if (_args.displayMode == golaemTokens->bbox) {
-
-                // the rendering bounding box is huge, so we use the
-                // "perception shape" instead (used for obstacle
-                // detection by other characters)
-
-                glm::Vector3 extent;
-#if 0
-                const glm::GeometryAsset *geoAsset =
+                const glm::GeometryAsset *asset =
                     character->getGeometryAssetFirstLOD(
                         static_cast<short>(_args.geometryTag));
-                if (geoAsset) {
-                    extent = geoAsset->_halfExtentsYUp;
-                } else {
-                    extent.fill(1);
-                }
-#else
-                extent = character->_perceptionShapeExtents;
-#endif
-
-                glm::Quaternion quat(
-                    frameData->_boneOrientations[frameDataIndex]);
+                const glm::Vector3& extent = asset->_halfExtentsYUp;
 
                 _bboxEntities.resize(_bboxEntities.size() + 1);
                 BBoxEntityData& entity = _bboxEntities.back();
@@ -756,8 +736,6 @@ void GolaemProcedural::PopulateCrowd(
                 entity.extent.Set(extent.getFloatValues());
                 entity.scale = simData->_scales[ientity];
                 entity.pos = localPos;
-                entity.quat.SetReal(quat.w);
-                entity.quat.SetImaginary(quat.x, quat.y, quat.z);
             }
 
             // save data needed for rendering meshes
@@ -779,12 +757,12 @@ void GolaemProcedural::PopulateCrowd(
                     &lodLevel);
                 entity.lodIndex = static_cast<short>(lodLevel);
 
-                const glm::GeometryAsset *geoAsset =
+                const glm::GeometryAsset *asset =
                     character->getGeometryAsset(
                         static_cast<short>(_args.geometryTag),
                         lodLevel);
                 const glm::Vector3& localExtent =
-                    geoAsset->_halfExtentsYUp;
+                    asset->_halfExtentsYUp;
 
                 GfVec3d extent(
                     localExtent.x, localExtent.y, localExtent.z);
@@ -1345,6 +1323,24 @@ HdContainerDataSourceHandle GetCubePrimvarsDataSource()
     return primvarsDs;
 }
 
+/*
+ * Returns a data source which returns the extent of a unit cube.
+ */
+HdContainerDataSourceHandle GetCubeExtentDataSource()
+{
+    static const HdContainerDataSourceHandle extentDs =
+        HdExtentSchema::Builder()
+        .SetMin(
+            HdRetainedTypedSampledDataSource<GfVec3d>::New(
+                GfVec3d(-1.0)))
+        .SetMax(
+            HdRetainedTypedSampledDataSource<GfVec3d>::New(
+                GfVec3d(1.0)))
+        .Build();
+
+    return extentDs;
+}
+
 HdSceneIndexPrim GolaemProcedural::GetChildPrim(
     const HdSceneIndexBaseRefPtr &/*inputScene*/,
     const SdfPath &childPrimPath)
@@ -1362,8 +1358,7 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         const BBoxEntityData& entity = _bboxEntities[it->second];
         GfMatrix4d mtx;
         mtx.SetScale(entity.extent * entity.scale);
-        GfMatrix4d mtx2(GfRotation(entity.quat), entity.pos);
-        mtx *= mtx2;
+        mtx.SetTranslateOnly(entity.pos);
 
         result.primType = HdPrimTypeTokens->mesh;
         result.dataSource = HdRetainedContainerDataSource::New(
@@ -1372,6 +1367,8 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
             .SetMatrix(
                 HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
             .Build(),
+            HdExtentSchemaTokens->extent,
+            GetCubeExtentDataSource(),
             HdMeshSchemaTokens->mesh,
             GetCubeMeshDataSource(),
             HdPrimvarsSchemaTokens->primvars,
