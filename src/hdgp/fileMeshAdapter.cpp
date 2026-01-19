@@ -50,7 +50,7 @@ FileMeshAdapter::FileMeshAdapter(
         _vertexIndices[i] = fileMesh._polygonsVertexIndices[i];
     }
 
-    if (_normals.size() > 0 &&
+    if (fileMesh._normalCount > 0 &&
         _normalMode == glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
         _normalIndices.resize(fileMesh._polygonsTotalVertexCount);
         for (int i = 0; i < _normalIndices.size(); ++i) {

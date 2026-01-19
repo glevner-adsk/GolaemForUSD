@@ -159,8 +159,9 @@ struct BBoxEntityData
  */
 struct MeshEntityData
 {
-    int crowdFieldIndex;
     int entityIndex;
+    short crowdFieldIndex;
+    short lodIndex;
     std::vector<std::shared_ptr<FileMeshAdapter>> meshes;
 };
 
@@ -209,7 +210,8 @@ private:
     std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
         int entityIndex, bool motionBlur, const GfVec2d& shutter,
-        const GfVec3d& cameraPos, const GfVec3d& entityPos);
+        const GfVec3d& cameraPos, const GfVec3d& entityPos,
+        int *lodLevel);
     PrimvarDataSourceMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData,
         const GlmFrameData *frameData,
@@ -730,7 +732,7 @@ void GolaemProcedural::PopulateCrowd(
 #if 0
                 const glm::GeometryAsset *geoAsset =
                     character->getGeometryAssetFirstLOD(
-                        short(_args.geometryTag));
+                        static_cast<short>(_args.geometryTag));
                 if (geoAsset) {
                     extent = geoAsset->_halfExtentsYUp;
                 } else {
@@ -763,12 +765,13 @@ void GolaemProcedural::PopulateCrowd(
                _meshEntities.resize(_meshEntities.size() + 1);
                 MeshEntityData& entity = _meshEntities.back();
 
-                entity.crowdFieldIndex = ifield;
                 entity.entityIndex = ientity;
+                entity.crowdFieldIndex = static_cast<short>(ifield);
+                int lodLevel;
                 entity.meshes = GenerateMeshes(
                     cachedSimulation, frame, ientity, motionBlur,
-                    shutter, cameraPos, globalPos);
-
+                    shutter, cameraPos, globalPos, &lodLevel);
+                entity.lodIndex = static_cast<short>(lodLevel);
             }
         }
     }
@@ -895,7 +898,8 @@ std::vector<std::shared_ptr<FileMeshAdapter>>
 GolaemProcedural::GenerateMeshes(
     CachedSimulation& cachedSimulation, double frame, int entityIndex,
     bool motionBlur, const GfVec2d& shutter,
-    const GfVec3d& cameraPos, const GfVec3d& entityPos)
+    const GfVec3d& cameraPos, const GfVec3d& entityPos,
+    int *lodLevel)
 {
     std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
 
@@ -924,7 +928,7 @@ GolaemProcedural::GenerateMeshes(
     inputData._entityToBakeIndex = simData->_entityToBakeIndex[entityIndex];
     inputData._entityId = simData->_entityIds[entityIndex];
     inputData._dirMapRules = _dirmapRules;
-    inputData._geometryTag = short(_args.geometryTag);
+    inputData._geometryTag = static_cast<short>(_args.geometryTag);
 
     glm::Vector3 glmCamPos, glmEntPos;
 
@@ -952,7 +956,7 @@ GolaemProcedural::GenerateMeshes(
             inputData._frameDatas.push_back(
                 cachedSimulation.getFinalFrameData(
                     frame + shutter[0], UINT32_MAX, true));
-            shutterOffsets.push_back(float(shutter[0]));
+            shutterOffsets.push_back(static_cast<float>(shutter[0]));
         }
         if (shutter[0] <= 0.0 && shutter[1] >= 0.0) {
             inputData._frames.push_back(0);
@@ -964,7 +968,7 @@ GolaemProcedural::GenerateMeshes(
             inputData._frameDatas.push_back(
                 cachedSimulation.getFinalFrameData(
                     frame + shutter[0], UINT32_MAX, true));
-            shutterOffsets.push_back(float(shutter[1]));
+            shutterOffsets.push_back(static_cast<float>(shutter[1]));
         }
     } else {
         inputData._frames.assign(1, frame);
@@ -982,14 +986,15 @@ GolaemProcedural::GenerateMeshes(
         return adapters;
     }
 
-    /*
-    std::cout << "entity " << entityIndex << ": geometry index "
-              << outputData._geometryFileIndexes[0] << '\n';
-    */
-
     if (outputData._geoType != glm::crowdio::GeometryType::GCG) {
         std::cerr << "geometry type is not GCG, ignoring\n";
         return adapters;
+    }
+
+    if (_args.enableLod) {
+        *lodLevel = static_cast<int>(outputData._geometryFileIndexes[0]);
+    } else {
+        *lodLevel = 0;
     }
 
     // fetch custom primvars for this entity: shader attributes and PP
@@ -1226,13 +1231,14 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
             const MeshEntityData& entity = _meshEntities[i];
             for (size_t j = 0; j < entity.meshes.size(); ++j) {
 
-                // including the crowd field, entity and mesh in the
-                // path enables us to tell Hydra that, if the same
+                // including the crowd field, entity, mesh and LOD in
+                // the path enables us to tell Hydra that, if the same
                 // prim appears in two successive frames, only the
                 // points and normals will have changed
 
-                sprintf_s(buffer, "c%d_%d_%zu",
-                        entity.crowdFieldIndex, entity.entityIndex, j);
+                sprintf_s(buffer, "c%de%dl%dm%zu",
+                          entity.crowdFieldIndex, entity.entityIndex,
+                          entity.lodIndex, j);
                 SdfPath childPath = myPath.AppendChild(TfToken(buffer));
                 result[childPath] = HdPrimTypeTokens->mesh;
                 _childIndexPairs[childPath] = {i, j};
