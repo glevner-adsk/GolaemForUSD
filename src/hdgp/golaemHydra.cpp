@@ -159,7 +159,7 @@ struct MeshEntityData
     short crowdFieldIndex;
     short lodIndex;
     std::vector<std::shared_ptr<FileMeshAdapter>> meshes;
-    GfVec3d minExtent, maxExtent;
+    HdContainerDataSourceHandle extent;
 };
 
 /*
@@ -591,6 +591,20 @@ bool GetShutterFromCamera(
     return true;
 }
 
+/*
+ * Returns a data source which returns the given extent.
+ */
+HdContainerDataSourceHandle GetExtentDataSource(
+    const GfVec3d& min, const GfVec3d& max)
+{
+    return HdExtentSchema::Builder()
+        .SetMin(
+            HdRetainedTypedSampledDataSource<GfVec3d>::New(min))
+        .SetMax(
+            HdRetainedTypedSampledDataSource<GfVec3d>::New(max))
+        .Build();
+}
+
 void GolaemProcedural::PopulateCrowd(
     const HdSceneIndexBaseRefPtr& inputScene)
 {
@@ -767,8 +781,8 @@ void GolaemProcedural::PopulateCrowd(
                 GfVec3d extent(
                     localExtent.x, localExtent.y, localExtent.z);
                 extent *= simData->_scales[ientity];
-                entity.minExtent = -extent + localPos;
-                entity.maxExtent = extent + localPos;
+                entity.extent = GetExtentDataSource(
+                    -extent + localPos, extent + localPos);
             }
         }
     }
@@ -1329,14 +1343,7 @@ HdContainerDataSourceHandle GetCubePrimvarsDataSource()
 HdContainerDataSourceHandle GetCubeExtentDataSource()
 {
     static const HdContainerDataSourceHandle extentDs =
-        HdExtentSchema::Builder()
-        .SetMin(
-            HdRetainedTypedSampledDataSource<GfVec3d>::New(
-                GfVec3d(-1.0)))
-        .SetMax(
-            HdRetainedTypedSampledDataSource<GfVec3d>::New(
-                GfVec3d(1.0)))
-        .Build();
+        GetExtentDataSource(GfVec3d(-1.0), GfVec3d(1.0));
 
     return extentDs;
 }
@@ -1394,16 +1401,6 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         size_t meshIndex = it->second.second;
         const MeshEntityData& meshEntity = _meshEntities[entityIndex];
 
-        HdContainerDataSourceHandle extentDataSource =
-            HdExtentSchema::Builder()
-            .SetMin(
-                HdRetainedTypedSampledDataSource<GfVec3d>::New(
-                    meshEntity.minExtent))
-            .SetMax(
-                HdRetainedTypedSampledDataSource<GfVec3d>::New(
-                    meshEntity.maxExtent))
-            .Build();
-
         const std::shared_ptr<FileMeshAdapter>& adapter =
             meshEntity.meshes[meshIndex];
 
@@ -1412,7 +1409,7 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
             HdXformSchemaTokens->xform,
             identityXform,
             HdExtentSchemaTokens->extent,
-            extentDataSource,
+            meshEntity.extent,
             HdMeshSchemaTokens->mesh,
             adapter->GetMeshDataSource(),
             HdPrimvarsSchemaTokens->primvars,
