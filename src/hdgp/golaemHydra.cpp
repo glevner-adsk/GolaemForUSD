@@ -365,9 +365,9 @@ Args GolaemProcedural::GetArgs(
 }
 
 /*
- * Stuff to do one time only, once the arguments (cache file, crowd
- * field names, etc.) are known. We assume that the arguments never
- * change.
+ * Called by Update() one time only, once the arguments (cache file,
+ * crowd field names, etc.) are known. We assume that the arguments
+ * never change.
  */
 void GolaemProcedural::InitCrowd(
     const HdSceneIndexBaseRefPtr& /*inputScene*/)
@@ -592,7 +592,7 @@ bool GetShutterFromCamera(
 }
 
 /*
- * Returns a data source which returns the given extent.
+ * Returns a data source that returns the given extent.
  */
 HdContainerDataSourceHandle GetExtentDataSource(
     const GfVec3d& min, const GfVec3d& max)
@@ -605,6 +605,90 @@ HdContainerDataSourceHandle GetExtentDataSource(
         .Build();
 }
 
+/*
+ * Returns a data source that returns the topology of a cube.
+ */
+HdContainerDataSourceHandle GetCubeMeshDataSource()
+{
+    static const VtIntArray faceVertexCounts =
+        {4, 4, 4, 4, 4, 4};
+
+    static const VtIntArray faceVertexIndices =
+        {0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1,
+            7, 5, 3, 6, 0, 2, 4};
+
+    using IntArrayDs =
+        HdRetainedTypedSampledDataSource<VtIntArray>;
+
+    static const IntArrayDs::Handle fvcDs =
+        IntArrayDs::New(faceVertexCounts);
+
+    static const IntArrayDs::Handle fviDs =
+        IntArrayDs::New(faceVertexIndices);
+
+    static const HdContainerDataSourceHandle meshDs =
+        HdMeshSchema::Builder()
+            .SetTopology(HdMeshTopologySchema::Builder()
+                .SetFaceVertexCounts(fvcDs)
+                .SetFaceVertexIndices(fviDs)
+                .Build())
+            .Build();
+
+    return meshDs;
+}
+
+/*
+ * Returns a data source that returns the vertices of a cube.
+ */
+HdContainerDataSourceHandle GetCubePrimvarsDataSource()
+{
+    static const VtArray<GfVec3f> points = {
+        {-1.0f, -1.0f, 1.0f},
+        {1.0f, -1.0f, 1.0f},
+        {-1.0f, 1.0f, 1.0f},
+        {1.0f, 1.0f, 1.0f},
+        {-1.0f, 1.0f, -1.0f},
+        {1.0f, 1.0f, -1.0f},
+        {-1.0f, -1.0f, -1.0f},
+        {1.0f, -1.0f, -1.0f}};
+
+    using PointArrayDs =
+        HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
+
+    static const HdContainerDataSourceHandle primvarsDs =
+        HdRetainedContainerDataSource::New(
+            HdPrimvarsSchemaTokens->points,
+            HdPrimvarSchema::Builder()
+                .SetPrimvarValue(PointArrayDs::New(points))
+                .SetInterpolation(HdPrimvarSchema::
+                    BuildInterpolationDataSource(
+                        HdPrimvarSchemaTokens->vertex))
+                .SetRole(HdPrimvarSchema::
+                    BuildRoleDataSource(
+                        HdPrimvarSchemaTokens->point))
+                .Build()
+        );
+
+    return primvarsDs;
+}
+
+/*
+ * Returns a data source that returns the extent of a unit cube.
+ */
+HdContainerDataSourceHandle GetCubeExtentDataSource()
+{
+    static const HdContainerDataSourceHandle extentDs =
+        GetExtentDataSource(GfVec3d(-1.0), GfVec3d(1.0));
+
+    return extentDs;
+}
+
+/*
+ * Called by Update() to query the Golaem cache for the frame to be
+ * rendered. Regenerates either _bboxEntities or _meshEntities,
+ * depending on the display mode, which is then used by GetChildPrim()
+ * to generate meshes.
+ */
 void GolaemProcedural::PopulateCrowd(
     const HdSceneIndexBaseRefPtr& inputScene)
 {
@@ -1094,6 +1178,11 @@ GolaemProcedural::GenerateMeshes(
     return adapters;
 }
 
+/*
+ * Entry point called by Hydra to ask what data sources of what prims
+ * the procedural depends on, that is, what changes will cause Hydra
+ * to call Update() again.
+ */
 HdGpGenerativeProcedural::DependencyMap
 GolaemProcedural::UpdateDependencies(
     const HdSceneIndexBaseRefPtr &inputScene)
@@ -1173,6 +1262,15 @@ GolaemProcedural::UpdateDependencies(
     return result;
 }
 
+/*
+ * Entry point called by Hydra to "cook" the procedural. It returns a
+ * list of the procedural's child prims and their types. If a given
+ * prim was already present in the previous call to Update(), it also
+ * tells Hydra which of its data sources may have changed since then.
+ *
+ * After Update() returns, Hydra will call GetChildPrim() (in multiple
+ * parallel threads) for the actual content of each prim.
+ */
 HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
     const HdSceneIndexBaseRefPtr& inputScene,
     const ChildPrimTypeMap& previousResult,
@@ -1245,7 +1343,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 
                 // including the crowd field, entity, mesh and LOD in
                 // the path enables us to tell Hydra that, if the same
-                // prim appears in two successive frames, only the
+                // prim appears in two successive updates, only the
                 // points, normals and extent will have changed
 
                 sprintf_s(buffer, "c%de%dl%dm%zu",
@@ -1271,83 +1369,9 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 }
 
 /*
- * Returns a data source which returns the topology of a cube.
+ * Entry point called by Hydra to retrieve the contents of a single
+ * prim. This method may be called concurrently by multiple threads.
  */
-HdContainerDataSourceHandle GetCubeMeshDataSource()
-{
-    static const VtIntArray faceVertexCounts =
-        {4, 4, 4, 4, 4, 4};
-
-    static const VtIntArray faceVertexIndices =
-        {0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1,
-            7, 5, 3, 6, 0, 2, 4};
-
-    using _IntArrayDs =
-        HdRetainedTypedSampledDataSource<VtIntArray>;
-
-    static const _IntArrayDs::Handle fvcDs =
-        _IntArrayDs::New(faceVertexCounts);
-
-    static const _IntArrayDs::Handle fviDs =
-        _IntArrayDs::New(faceVertexIndices);
-
-    static const HdContainerDataSourceHandle meshDs =
-        HdMeshSchema::Builder()
-            .SetTopology(HdMeshTopologySchema::Builder()
-                .SetFaceVertexCounts(fvcDs)
-                .SetFaceVertexIndices(fviDs)
-                .Build())
-            .Build();
-
-    return meshDs;
-}
-
-/*
- * Returns a data source which returns the vertices of a cube.
- */
-HdContainerDataSourceHandle GetCubePrimvarsDataSource()
-{
-    static const VtArray<GfVec3f> points = {
-        {-1.0f, -1.0f, 1.0f},
-        {1.0f, -1.0f, 1.0f},
-        {-1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f},
-        {-1.0f, 1.0f, -1.0f},
-        {1.0f, 1.0f, -1.0f},
-        {-1.0f, -1.0f, -1.0f},
-        {1.0f, -1.0f, -1.0f}};
-
-    using _PointArrayDs =
-        HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
-
-    static const HdContainerDataSourceHandle primvarsDs =
-        HdRetainedContainerDataSource::New(
-            HdPrimvarsSchemaTokens->points,
-            HdPrimvarSchema::Builder()
-                .SetPrimvarValue(_PointArrayDs::New(points))
-                .SetInterpolation(HdPrimvarSchema::
-                    BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->vertex))
-                .SetRole(HdPrimvarSchema::
-                    BuildRoleDataSource(
-                        HdPrimvarSchemaTokens->point))
-                .Build()
-        );
-
-    return primvarsDs;
-}
-
-/*
- * Returns a data source which returns the extent of a unit cube.
- */
-HdContainerDataSourceHandle GetCubeExtentDataSource()
-{
-    static const HdContainerDataSourceHandle extentDs =
-        GetExtentDataSource(GfVec3d(-1.0), GfVec3d(1.0));
-
-    return extentDs;
-}
-
 HdSceneIndexPrim GolaemProcedural::GetChildPrim(
     const HdSceneIndexBaseRefPtr &/*inputScene*/,
     const SdfPath &childPrimPath)
