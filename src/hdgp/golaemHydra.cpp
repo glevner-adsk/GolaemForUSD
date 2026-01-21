@@ -1314,7 +1314,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         _childIndices.clear();
 
         for (size_t i = 0; i < _bboxEntities.size(); ++i) {
-            sprintf_s(buffer, "c%zu", i);
+            std::snprintf(buffer, sizeof(buffer), "c%zu", i);
             SdfPath childPath = myPath.AppendChild(TfToken(buffer));
             result[childPath] = HdPrimTypeTokens->mesh;
             _childIndices[childPath] = i;
@@ -1346,9 +1346,10 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                 // prim appears in two successive updates, only the
                 // points, normals and extent will have changed
 
-                sprintf_s(buffer, "c%de%dl%dm%zu",
-                          entity.crowdFieldIndex, entity.entityIndex,
-                          entity.lodIndex, j);
+                std::snprintf(
+                    buffer, sizeof(buffer), "c%de%dl%dm%zu",
+                    entity.crowdFieldIndex, entity.entityIndex,
+                    entity.lodIndex, j);
                 SdfPath childPath = myPath.AppendChild(TfToken(buffer));
                 result[childPath] = HdPrimTypeTokens->mesh;
                 _childIndexPairs[childPath] = {i, j};
