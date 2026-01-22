@@ -48,7 +48,7 @@ public:
         const glm::Array<glm::Vector3>& deformedNormals);
 
     void SetAnimatedData(
-        const glm::Array<float>& shutterOffsets,
+        const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
         const DeformedVectors& deformedVertices,
         const DeformedVectors& deformedNormals,
         size_t meshIndex);

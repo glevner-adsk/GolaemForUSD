@@ -43,6 +43,8 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+using Time = HdSampledDataSource::Time;
+
 using glm::GlmString;
 using glm::GolaemCharacter;
 using glm::PODArray;
@@ -1042,28 +1044,28 @@ GolaemProcedural::GenerateMeshes(
         inputData._geoFileIndex = 0;
     }
 
-    glm::Array<float> shutterOffsets;
+    glm::Array<Time> shutterOffsets;
 
     if (motionBlur) {
         inputData._frames.reserve(3);
         inputData._frameDatas.reserve(3);
         if (shutter[0] != 0.0) {
-            inputData._frames.push_back(shutter[0]);
+            inputData._frames.push_back(frame + shutter[0]);
             inputData._frameDatas.push_back(
                 cachedSimulation.getFinalFrameData(
                     frame + shutter[0], UINT32_MAX, true));
             shutterOffsets.push_back(static_cast<float>(shutter[0]));
         }
         if (shutter[0] <= 0.0 && shutter[1] >= 0.0) {
-            inputData._frames.push_back(0);
+            inputData._frames.push_back(frame);
             inputData._frameDatas.push_back(frameData);
             shutterOffsets.push_back(0);
         }
         if (shutter[1] != 0.0) {
-            inputData._frames.push_back(shutter[1]);
+            inputData._frames.push_back(frame + shutter[1]);
             inputData._frameDatas.push_back(
                 cachedSimulation.getFinalFrameData(
-                    frame + shutter[0], UINT32_MAX, true));
+                    frame + shutter[1], UINT32_MAX, true));
             shutterOffsets.push_back(static_cast<float>(shutter[1]));
         }
     } else {

@@ -122,7 +122,7 @@ void FileMeshAdapter::SetAnimatedData(
  * index -- so we need the mesh index to access the vectors.
  */
 void FileMeshAdapter::SetAnimatedData(
-    const glm::Array<float>& shutterOffsets,
+    const glm::Array<Time>& shutterOffsets,
     const DeformedVectors& deformedVertices,
     const DeformedVectors& deformedNormals,
     size_t meshIndex)
