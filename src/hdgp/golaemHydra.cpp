@@ -1,8 +1,3 @@
-/*
- * TODO:
- * - FBX support
- * - skeleton display mode
- */
 #include <pxr/imaging/hdGp/generativeProceduralPlugin.h>
 #include <pxr/imaging/hdGp/generativeProceduralPluginRegistry.h>
 
@@ -34,6 +29,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -1164,14 +1160,28 @@ GolaemProcedural::GenerateMeshes(
             std::make_shared<FileMeshAdapter>(
                 fileMesh, material, customPrimvars);
 
-        if (motionBlur) {
-            adapter->SetAnimatedData(
-                shutterOffsets, outputData._deformedVertices,
-                outputData._deformedNormals, imesh);
+        if (adapter->IsRigid()) {
+            auto boneIndex = meshXform._rigidSkinningBoneId;
+            auto entityType = simData->_entityTypes[entityIndex];
+            auto boneCount = simData->_boneCount[entityType];
+            auto frameDataIndex = boneIndex
+                + simData->_iBoneOffsetPerEntityType[entityType]
+                + simData->_indexInEntityType[entityIndex] * boneCount;
+
+            adapter->SetTransform(
+                frameData->_bonePositions[frameDataIndex],
+                frameData->_boneOrientations[frameDataIndex],
+                simData->_scales[entityIndex]);
         } else {
-            adapter->SetAnimatedData(
-                outputData._deformedVertices[0][imesh],
-                outputData._deformedNormals[0][imesh]);
+            if (motionBlur) {
+                adapter->SetGeometry(
+                    shutterOffsets, outputData._deformedVertices,
+                    outputData._deformedNormals, imesh);
+            } else {
+                adapter->SetGeometry(
+                    outputData._deformedVertices[0][imesh],
+                    outputData._deformedNormals[0][imesh]);
+            }
         }
 
         adapters.emplace_back(adapter);
@@ -1341,28 +1351,47 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 
         for (size_t i = 0; i < _meshEntities.size(); ++i) {
             const MeshEntityData& entity = _meshEntities[i];
+
+            // including the crowd field, entity, LOD and mesh in the
+            // path enables us to tell Hydra that, if the same prim
+            // appears in two successive updates, only the points,
+            // normals and extent will have changed (not the topology)
+
+            // a group node that provides the extent for all the
+            // meshes beneath it
+
+            std::snprintf(
+                buffer, sizeof(buffer), "c%de%dl%d",
+                entity.crowdFieldIndex, entity.entityIndex,
+                entity.lodIndex);
+            SdfPath groupPath = myPath.AppendChild(TfToken(buffer));
+            _childIndexPairs[groupPath] =
+                {i, std::numeric_limits<size_t>::max()};
+
+            if (previousResult.size() > 0) {
+                outputDirtiedPrims->emplace_back(
+                    groupPath, HdExtentSchema::GetDefaultLocator());
+            }
+
+            // a child node for each mesh
+
             for (size_t j = 0; j < entity.meshes.size(); ++j) {
-
-                // including the crowd field, entity, mesh and LOD in
-                // the path enables us to tell Hydra that, if the same
-                // prim appears in two successive updates, only the
-                // points, normals and extent will have changed
-
-                std::snprintf(
-                    buffer, sizeof(buffer), "c%de%dl%dm%zu",
-                    entity.crowdFieldIndex, entity.entityIndex,
-                    entity.lodIndex, j);
-                SdfPath childPath = myPath.AppendChild(TfToken(buffer));
+                std::snprintf(buffer, sizeof(buffer), "m%zu", j);
+                SdfPath childPath = groupPath.AppendChild(TfToken(buffer));
                 result[childPath] = HdPrimTypeTokens->mesh;
                 _childIndexPairs[childPath] = {i, j};
 
                 if (previousResult.size() > 0) {
+                    HdDataSourceLocatorSet locators = {
+                        HdPrimvarsSchema::GetPointsLocator(),
+                        HdPrimvarsSchema::GetNormalsLocator()
+                    };
+                    if (entity.meshes[j]->IsRigid()) {
+                        locators.append(
+                            HdXformSchema::GetDefaultLocator());
+                    }
                     outputDirtiedPrims->emplace_back(
-                        childPath, HdDataSourceLocatorSet({
-                                HdPrimvarsSchema::GetPointsLocator(),
-                                HdPrimvarsSchema::GetNormalsLocator(),
-                                HdExtentSchema::GetDefaultLocator()
-                            }));
+                        childPath, locators);
                 }
             }
         }
@@ -1412,13 +1441,6 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
     // mesh display mode
 
     else {
-        static const HdContainerDataSourceHandle identityXform =
-            HdXformSchema::Builder()
-            .SetMatrix(
-                HdRetainedTypedSampledDataSource<GfMatrix4d>::New(
-                    GfMatrix4d(1.0)))
-            .Build();
-
         auto it = _childIndexPairs.find(childPrimPath);
         if (it == _childIndexPairs.end()) {
             return result;
@@ -1428,21 +1450,34 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         size_t meshIndex = it->second.second;
         const MeshEntityData& meshEntity = _meshEntities[entityIndex];
 
-        const std::shared_ptr<FileMeshAdapter>& adapter =
-            meshEntity.meshes[meshIndex];
+        // the entity group node supplies the extent
 
-        result.primType = HdPrimTypeTokens->mesh;
-        result.dataSource = HdRetainedContainerDataSource::New(
-            HdXformSchemaTokens->xform,
-            identityXform,
-            HdExtentSchemaTokens->extent,
-            meshEntity.extent,
-            HdMeshSchemaTokens->mesh,
-            adapter->GetMeshDataSource(),
-            HdPrimvarsSchemaTokens->primvars,
-            adapter->GetPrimvarsDataSource(),
-            HdMaterialBindingsSchemaTokens->materialBindings,
-            adapter->GetMaterialDataSource());
+        if (meshIndex == std::numeric_limits<size_t>::max()) {
+            result.primType = TfToken();
+            result.dataSource = HdRetainedContainerDataSource::New(
+                HdExtentSchemaTokens->extent,
+                meshEntity.extent);
+        }
+
+        // child nodes supply the xform, mesh and material bindings
+        // (note that RenderMan refuses to render a mesh that does not
+        // provide an xform!)
+
+        else {
+            const std::shared_ptr<FileMeshAdapter>& adapter =
+                meshEntity.meshes[meshIndex];
+
+            result.primType = HdPrimTypeTokens->mesh;
+            result.dataSource = HdRetainedContainerDataSource::New(
+                HdXformSchemaTokens->xform,
+                adapter->GetXformDataSource(),
+                HdMeshSchemaTokens->mesh,
+                adapter->GetMeshDataSource(),
+                HdPrimvarsSchemaTokens->primvars,
+                adapter->GetPrimvarsDataSource(),
+                HdMaterialBindingsSchemaTokens->materialBindings,
+                adapter->GetMaterialDataSource());
+        }
     }
 
     return result;

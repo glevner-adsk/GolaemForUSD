@@ -37,25 +37,39 @@ public:
     using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
     using DeformedVectors =
         glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
+    using RigidMeshCache =
+        std::unordered_map<SdfPath, HdContainerDataSourceHandle, TfHash>;
 
     FileMeshAdapter(
         const glm::crowdio::GlmFileMesh& fileMesh,
         const SdfPath& material,
-        const PrimvarDSMapRef& customPrimvars);
+        const PrimvarDSMapRef& customPrimvars,
+        RigidMeshCache *rigidMeshCache = nullptr,
+        SdfPath rigidMeshKey = SdfPath());
 
-    void SetAnimatedData(
+    void SetGeometry(
         const glm::Array<glm::Vector3>& deformedVertices,
         const glm::Array<glm::Vector3>& deformedNormals);
 
-    void SetAnimatedData(
+    void SetGeometry(
         const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
         const DeformedVectors& deformedVertices,
         const DeformedVectors& deformedNormals,
         size_t meshIndex);
 
+    void SetTransform(
+        const float pos[3], const float rot[4], float scale);
+
+    // TODO: variant of SetTransform() with shutter offsets
+
+    HdContainerDataSourceHandle GetXformDataSource() const;
     HdContainerDataSourceHandle GetMeshDataSource() const;
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
     HdContainerDataSourceHandle GetMaterialDataSource() const;
+
+    bool IsRigid() const {
+        return _isRigid;
+    }
 
 private:
     using IntArrayDS = HdRetainedTypedSampledDataSource<VtIntArray>;
@@ -76,6 +90,8 @@ private:
     std::vector<HdSampledDataSource::Time> _shutterOffsets;
     SdfPath _material;
     const PrimvarDSMapRef _customPrimvars;
+    HdContainerDataSourceHandle _xform;
+    bool _isRigid;
 };
 
 }  // namespace glmhydra

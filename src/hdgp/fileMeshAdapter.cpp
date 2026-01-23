@@ -5,7 +5,9 @@
 #include <pxr/imaging/hd/meshTopologySchema.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/primvarsSchema.h>
+#include <pxr/imaging/hd/xformSchema.h>
 #include <pxr/usd/usdGeom/tokens.h>
+#include <pxr/base/gf/quatd.h>
 
 #include <cassert>
 
@@ -13,12 +15,19 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 using Time = HdSampledDataSource::Time;
 
-namespace glmhydra {
-
 TF_DEFINE_PRIVATE_TOKENS(
     fileMeshAdapterTokens,
     (st)
 );
+
+static const HdContainerDataSourceHandle identityXform =
+    HdXformSchema::Builder()
+    .SetMatrix(
+        HdRetainedTypedSampledDataSource<GfMatrix4d>::New(
+            GfMatrix4d(1.0)))
+    .Build();
+
+namespace glmhydra {
 
 /*
  * The FileMeshAdapter constructor makes copies of all the data it
@@ -27,12 +36,13 @@ TF_DEFINE_PRIVATE_TOKENS(
  * return the data sources, because they may be called from multiple
  * threads.
  *
- * Call SetAnimatedData() afterwards to set the deformed vertices and
- * normals.
+ * Call SetGeometry() afterwards to set the deformed vertices and
+ * normals. (For a rigid mesh, this is unnecessary.)
  */
 FileMeshAdapter::FileMeshAdapter(
     const glm::crowdio::GlmFileMesh& fileMesh,
-    const SdfPath& material, const PrimvarDSMapRef& customPrimvars)
+    const SdfPath& material, const PrimvarDSMapRef& customPrimvars,
+    RigidMeshCache * /*rigidMeshCache*/, SdfPath /*rigidMeshKey*/)
     : _vertexCounts(fileMesh._polygonCount),
       _vertexIndices(fileMesh._polygonsTotalVertexCount),
       _totalVertexCount(fileMesh._vertexCount),
@@ -40,8 +50,12 @@ FileMeshAdapter::FileMeshAdapter(
       _normalMode(glm::crowdio::GlmNormalMode(fileMesh._normalMode)),
       _uvMode(glm::crowdio::GlmUVMode(fileMesh._uvMode)),
       _material(material),
-      _customPrimvars(customPrimvars)
+      _customPrimvars(customPrimvars),
+      _xform(identityXform),
+      _isRigid(fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID)
 {
+    // TODO: if rigid, check for a cached rigid mesh
+
     for (int i = 0; i < _vertexCounts.size(); ++i) {
         _vertexCounts[i] = fileMesh._polygonsVertexCount[i];
     }
@@ -74,6 +88,29 @@ FileMeshAdapter::FileMeshAdapter(
             _uvs[i].Set(fileMesh._us[0][i], fileMesh._vs[0][i]);
         }
     }
+
+    // for a rigid body, copy the initial vertices and normals once
+    // and for all
+
+    if (fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID) {
+        VtVec3fArray v(_totalVertexCount);
+        for (size_t i = 0; i < _totalVertexCount; ++i) {
+            const float *src = fileMesh._vertices[i]._position;
+            v[i].Set(src[0], src[1], src[2]);
+        }
+        _vertices.assign(1, std::move(v));
+
+        VtVec3fArray n(_totalNormalCount);
+        for (size_t i = 0; i < _totalNormalCount; ++i) {
+            const float *src = fileMesh._normals[i];
+            n[i].Set(src[0], src[1], src[2]);
+        }
+        _normals.assign(1, std::move(n));
+
+        _shutterOffsets.assign(1, 0);
+
+        // TODO: cache topology, geometry and UVs
+    }
 }
 
 /*
@@ -92,12 +129,13 @@ static inline void CopyGlmArrayToVtArray(
 /*
  * Sets the deformed vertices and normals for the current frame.
  */
-void FileMeshAdapter::SetAnimatedData(
+void FileMeshAdapter::SetGeometry(
     const glm::Array<glm::Vector3>& deformedVertices,
     const glm::Array<glm::Vector3>& deformedNormals)
 {
     assert(deformedVertices.size() == _totalVertexCount);
     assert(deformedNormals.size() == _totalNormalCount);
+    assert(!_isRigid);
 
     _shutterOffsets.assign(1, 0);
 
@@ -109,9 +147,9 @@ void FileMeshAdapter::SetAnimatedData(
 }
 
 /*
- * Variation on SetAnimatedData() for motion blur. Specify any number
- * of shutter offsets and the deformed vertices and normals for each
- * of those offsets.
+ * Variation on SetGeometry() for motion blur. Specify any number of
+ * shutter offsets and the deformed vertices and normals for each of
+ * those offsets.
  *
  * It is assumed that the shutter offsets are given in order! That is,
  * HdRetainedTypedMultisampledDataSource makes that assumption.
@@ -121,7 +159,7 @@ void FileMeshAdapter::SetAnimatedData(
  * -- corresponding to the frame index, the mesh index and the vector
  * index -- so we need the mesh index to access the vectors.
  */
-void FileMeshAdapter::SetAnimatedData(
+void FileMeshAdapter::SetGeometry(
     const glm::Array<Time>& shutterOffsets,
     const DeformedVectors& deformedVertices,
     const DeformedVectors& deformedNormals,
@@ -131,6 +169,7 @@ void FileMeshAdapter::SetAnimatedData(
 
     assert(deformedVertices.size() == sampleCount);
     assert(deformedNormals.size() == sampleCount);
+    assert(!_isRigid);
 
     _shutterOffsets.assign(
         shutterOffsets.begin(), shutterOffsets.end());
@@ -144,6 +183,26 @@ void FileMeshAdapter::SetAnimatedData(
         assert(deformedNormals[i][meshIndex].size() == _totalNormalCount);
         CopyGlmArrayToVtArray(_normals[i], deformedNormals[i][meshIndex]);
     }
+}
+
+void FileMeshAdapter::SetTransform(
+    const float pos[3], const float rot[4], float scale)
+{
+    GfMatrix4d mtx, mtx2;
+    mtx.SetScale(scale);
+    mtx2.SetRotate(GfQuatd(rot[3], rot[0], rot[1], rot[2]));
+    mtx *= mtx2;
+    mtx.SetTranslateOnly(GfVec3d(pos[0], pos[1], pos[2]));
+
+    _xform = HdXformSchema::Builder()
+        .SetMatrix(
+            HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
+        .Build();
+}
+
+HdContainerDataSourceHandle FileMeshAdapter::GetXformDataSource() const
+{
+    return _xform;
 }
 
 HdContainerDataSourceHandle FileMeshAdapter::GetMeshDataSource() const
