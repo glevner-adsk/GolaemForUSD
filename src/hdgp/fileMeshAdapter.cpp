@@ -1,13 +1,10 @@
 #include "fileMeshAdapter.h"
 
-#include <pxr/imaging/hd/materialBindingsSchema.h>
 #include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/meshTopologySchema.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/primvarsSchema.h>
-#include <pxr/imaging/hd/xformSchema.h>
 #include <pxr/usd/usdGeom/tokens.h>
-#include <pxr/base/gf/quatd.h>
 
 #include <cassert>
 
@@ -19,13 +16,6 @@ TF_DEFINE_PRIVATE_TOKENS(
     fileMeshAdapterTokens,
     (st)
 );
-
-static const HdContainerDataSourceHandle identityXform =
-    HdXformSchema::Builder()
-    .SetMatrix(
-        HdRetainedTypedSampledDataSource<GfMatrix4d>::New(
-            GfMatrix4d(1.0)))
-    .Build();
 
 namespace glmhydra {
 
@@ -40,18 +30,13 @@ namespace glmhydra {
  * normals. (For a rigid mesh, this is unnecessary.)
  */
 FileMeshAdapter::FileMeshAdapter(
-    const glm::crowdio::GlmFileMesh& fileMesh,
-    const SdfPath& material, const PrimvarDSMapRef& customPrimvars,
-    RigidMeshCache * /*rigidMeshCache*/, SdfPath /*rigidMeshKey*/)
+    const glm::crowdio::GlmFileMesh& fileMesh)
     : _vertexCounts(fileMesh._polygonCount),
       _vertexIndices(fileMesh._polygonsTotalVertexCount),
       _totalVertexCount(fileMesh._vertexCount),
       _totalNormalCount(fileMesh._normalCount),
       _normalMode(glm::crowdio::GlmNormalMode(fileMesh._normalMode)),
       _uvMode(glm::crowdio::GlmUVMode(fileMesh._uvMode)),
-      _material(material),
-      _customPrimvars(customPrimvars),
-      _xform(identityXform),
       _isRigid(fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID)
 {
     // TODO: if rigid, check for a cached rigid mesh
@@ -185,26 +170,6 @@ void FileMeshAdapter::SetGeometry(
     }
 }
 
-void FileMeshAdapter::SetTransform(
-    const float pos[3], const float rot[4], float scale)
-{
-    GfMatrix4d mtx, mtx2;
-    mtx.SetScale(scale);
-    mtx2.SetRotate(GfQuatd(rot[3], rot[0], rot[1], rot[2]));
-    mtx *= mtx2;
-    mtx.SetTranslateOnly(GfVec3d(pos[0], pos[1], pos[2]));
-
-    _xform = HdXformSchema::Builder()
-        .SetMatrix(
-            HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
-        .Build();
-}
-
-HdContainerDataSourceHandle FileMeshAdapter::GetXformDataSource() const
-{
-    return _xform;
-}
-
 HdContainerDataSourceHandle FileMeshAdapter::GetMeshDataSource() const
 {
     return HdMeshSchema::Builder()
@@ -225,10 +190,6 @@ FileMeshAdapter::GetPrimvarsDataSource() const
     VtTokenArray dataNames;
     VtArray<HdDataSourceBaseHandle> dataSources;
     size_t capacity = 3;  // points, normals and UVs
-
-    if (_customPrimvars) {
-        capacity += _customPrimvars->size();
-    }
 
     dataNames.reserve(capacity);
     dataSources.reserve(capacity);
@@ -339,41 +300,11 @@ FileMeshAdapter::GetPrimvarsDataSource() const
         dataSources.push_back(uvBuilder.Build());
     }
 
-    // custom primvars
-
-    if (_customPrimvars) {
-        for (auto it: *_customPrimvars) {
-            dataNames.push_back(it.first);
-            dataSources.push_back(
-                HdPrimvarSchema::Builder()
-                .SetPrimvarValue(it.second)
-                .SetInterpolation(
-                    HdPrimvarSchema::BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->constant))
-                .Build());
-        }
-    }
-
     // the final primvars data source contains the vertices,
-    // normals, UVs and custom primvars
+    // normals and UVs
 
     return HdRetainedContainerDataSource::New(
         dataNames.size(), dataNames.cdata(), dataSources.cdata());
-}
-
-HdContainerDataSourceHandle
-FileMeshAdapter::GetMaterialDataSource() const
-{
-    if (_material.IsEmpty()) {
-        return HdContainerDataSourceHandle();
-    }
-
-    return HdRetainedContainerDataSource::New(
-        HdMaterialBindingsSchemaTokens->allPurpose,
-        HdMaterialBindingSchema::Builder()
-        .SetPath(
-            HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
-        .Build());
 }
 
 }  // namespace glmhydra

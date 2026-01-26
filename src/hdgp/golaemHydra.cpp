@@ -26,6 +26,7 @@
 
 #include "glmUSD.h"
 #include "fileMeshAdapter.h"
+#include "fileMeshInstance.h"
 
 #include <cmath>
 #include <iostream>
@@ -59,6 +60,7 @@ using glm::crowdio::GlmUVMode;
 using glm::crowdio::SimulationCacheFactory;
 
 using glmhydra::FileMeshAdapter;
+using glmhydra::FileMeshInstance;
 
 TF_DEBUG_CODES(
     GLMHYDRA_DEPENDENCIES,
@@ -91,6 +93,8 @@ TF_DEFINE_PRIVATE_TOKENS(
     (byShadingGroup)
     (none)
 );
+
+const bool kEnableRigidEntities = false;
 
 /*
  * We use a hash map to store an entity's custom primvars (name and
@@ -156,7 +160,7 @@ struct MeshEntityData
     int entityIndex;
     short crowdFieldIndex;
     short lodIndex;
-    std::vector<std::shared_ptr<FileMeshAdapter>> meshes;
+    std::vector<std::shared_ptr<FileMeshInstance>> meshes;
     HdContainerDataSourceHandle extent;
 };
 
@@ -202,7 +206,7 @@ private:
     Args GetArgs(const HdSceneIndexBaseRefPtr& inputScene);
     void InitCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
-    std::vector<std::shared_ptr<FileMeshAdapter>> GenerateMeshes(
+    std::vector<std::shared_ptr<FileMeshInstance>> GenerateMeshes(
         CachedSimulation& cachedSimulation, double frame,
         int entityIndex, bool motionBlur, const GfVec2d& shutter,
         bool lodEnabled, const GfVec3d& cameraPos,
@@ -874,8 +878,8 @@ void GolaemProcedural::PopulateCrowd(
  * Finds all the shader and PP attributes defined for the given entity
  * and generates a Hydra data source of the appropriate type for each.
  * Returns a shared pointer to a hash map containing the name and data
- * source for each. Pass that hash map to GenerateMeshes() so that
- * each of the mesh's entities shares them.
+ * source for each. Pass that hash map to each FileMeshInstance so
+ * that all of the mesh's entities share them.
  */
 PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
     const GlmSimulationData *simData,
@@ -984,17 +988,17 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 }
 
 /*
- * Generates and returns a FileMeshAdapter for each mesh constituting
+ * Generates and returns a FileMeshInstance for each mesh constituting
  * the given entity at the given frame.
  */
-std::vector<std::shared_ptr<FileMeshAdapter>>
+std::vector<std::shared_ptr<FileMeshInstance>>
 GolaemProcedural::GenerateMeshes(
     CachedSimulation& cachedSimulation, double frame, int entityIndex,
     bool motionBlur, const GfVec2d& shutter, bool lodEnabled,
     const GfVec3d& cameraPos, const GfVec3d& entityPos,
     size_t *lodLevel)
 {
-    std::vector<std::shared_ptr<FileMeshAdapter>> adapters;
+    std::vector<std::shared_ptr<FileMeshInstance>> instances;
 
     // fetch simulation data, frame data and assets, then call
     // glmPrepareEntityGeometry() to generate information about this
@@ -1077,12 +1081,12 @@ GolaemProcedural::GenerateMeshes(
         std::cerr << "glmPrepareEntityGeometry() returned error: "
                   << glmConvertGeometryGenerationStatus(geoStatus)
                   << '\n';
-        return adapters;
+        return instances;
     }
 
     if (outputData._geoType != glm::crowdio::GeometryType::GCG) {
         std::cerr << "geometry type is not GCG, ignoring\n";
-        return adapters;
+        return instances;
     }
 
     if (lodEnabled) {
@@ -1105,7 +1109,7 @@ GolaemProcedural::GenerateMeshes(
     CrowdGcgCharacter *gcgCharacter = outputData._gcgCharacters[0];
     const GlmGeometryFile& geoFile = gcgCharacter->getGeometry();
     size_t meshCount = outputData._meshAssetNameIndices.size();
-    adapters.reserve(meshCount);
+    instances.reserve(meshCount);
 
     for (size_t imesh = 0; imesh < meshCount; ++imesh) {
 
@@ -1153,26 +1157,15 @@ GolaemProcedural::GenerateMeshes(
                 _args.materialPath.AppendElementString(matname);
         }
 
-        // construct a FileMeshAdapter to generate Hydra data sources
+        // construct a FileMeshInstance to generate Hydra data sources
         // for the mesh and its material
 
         std::shared_ptr<FileMeshAdapter> adapter =
-            std::make_shared<FileMeshAdapter>(
-                fileMesh, material, customPrimvars);
+            std::make_shared<FileMeshAdapter>(fileMesh);
 
-        if (adapter->IsRigid()) {
-            auto boneIndex = meshXform._rigidSkinningBoneId;
-            auto entityType = simData->_entityTypes[entityIndex];
-            auto boneCount = simData->_boneCount[entityType];
-            auto frameDataIndex = boneIndex
-                + simData->_iBoneOffsetPerEntityType[entityType]
-                + simData->_indexInEntityType[entityIndex] * boneCount;
+        bool isRigid = kEnableRigidEntities && adapter->IsRigid();
 
-            adapter->SetTransform(
-                frameData->_bonePositions[frameDataIndex],
-                frameData->_boneOrientations[frameDataIndex],
-                simData->_scales[entityIndex]);
-        } else {
+        if (!isRigid) {
             if (motionBlur) {
                 adapter->SetGeometry(
                     shutterOffsets, outputData._deformedVertices,
@@ -1184,10 +1177,28 @@ GolaemProcedural::GenerateMeshes(
             }
         }
 
-        adapters.emplace_back(adapter);
+        std::shared_ptr<FileMeshInstance> instance =
+            std::make_shared<FileMeshInstance>(
+                adapter, material, customPrimvars);
+
+        if (isRigid) {
+            auto boneIndex = meshXform._rigidSkinningBoneId;
+            auto entityType = simData->_entityTypes[entityIndex];
+            auto boneCount = simData->_boneCount[entityType];
+            auto frameDataIndex = boneIndex
+                + simData->_iBoneOffsetPerEntityType[entityType]
+                + simData->_indexInEntityType[entityIndex] * boneCount;
+
+            instance->SetTransform(
+                frameData->_bonePositions[frameDataIndex],
+                frameData->_boneOrientations[frameDataIndex],
+                simData->_scales[entityIndex]);
+        }
+
+        instances.emplace_back(instance);
     }
 
-    return adapters;
+    return instances;
 }
 
 /*
@@ -1464,19 +1475,19 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         // provide an xform!)
 
         else {
-            const std::shared_ptr<FileMeshAdapter>& adapter =
+            const std::shared_ptr<FileMeshInstance>& instance =
                 meshEntity.meshes[meshIndex];
 
             result.primType = HdPrimTypeTokens->mesh;
             result.dataSource = HdRetainedContainerDataSource::New(
                 HdXformSchemaTokens->xform,
-                adapter->GetXformDataSource(),
+                instance->GetXformDataSource(),
                 HdMeshSchemaTokens->mesh,
-                adapter->GetMeshDataSource(),
+                instance->GetMeshDataSource(),
                 HdPrimvarsSchemaTokens->primvars,
-                adapter->GetPrimvarsDataSource(),
+                instance->GetPrimvarsDataSource(),
                 HdMaterialBindingsSchemaTokens->materialBindings,
-                adapter->GetMaterialDataSource());
+                instance->GetMaterialDataSource());
         }
     }
 

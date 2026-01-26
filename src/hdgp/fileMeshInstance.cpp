@@ -1,0 +1,88 @@
+#include "fileMeshInstance.h"
+
+#include <pxr/imaging/hd/containerDataSourceEditor.h>
+#include <pxr/imaging/hd/materialBindingsSchema.h>
+#include <pxr/imaging/hd/primvarSchema.h>
+#include <pxr/imaging/hd/xformSchema.h>
+#include <pxr/base/gf/quatd.h>
+
+PXR_NAMESPACE_USING_DIRECTIVE
+
+static const HdContainerDataSourceHandle identityXform =
+    HdXformSchema::Builder()
+    .SetMatrix(
+        HdRetainedTypedSampledDataSource<GfMatrix4d>::New(
+            GfMatrix4d(1.0)))
+    .Build();
+
+static const HdTokenDataSourceHandle constantInterp =
+    HdPrimvarSchema::BuildInterpolationDataSource(
+        HdPrimvarSchemaTokens->constant);
+
+namespace glmhydra {
+
+FileMeshInstance::FileMeshInstance(
+    const std::shared_ptr<FileMeshAdapter>& adapter,
+    const SdfPath& material, const PrimvarDSMapRef& customPrimvars)
+    : _adapter(adapter),
+      _material(material),
+      _customPrimvars(customPrimvars),
+      _xform(identityXform)
+{
+}
+
+void FileMeshInstance::SetTransform(
+    const float pos[3], const float rot[4], float scale)
+{
+    GfMatrix4d mtx, mtx2;
+    mtx.SetScale(scale);
+    mtx2.SetRotate(GfQuatd(rot[3], rot[0], rot[1], rot[2]));
+    mtx *= mtx2;
+    mtx.SetTranslateOnly(GfVec3d(pos[0], pos[1], pos[2]));
+
+    _xform = HdXformSchema::Builder()
+        .SetMatrix(
+            HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
+        .Build();
+}
+
+HdContainerDataSourceHandle
+FileMeshInstance::GetPrimvarsDataSource() const
+{
+    HdContainerDataSourceHandle meshDataSource =
+        _adapter->GetPrimvarsDataSource();
+
+    if (!_customPrimvars || _customPrimvars->empty()) {
+        return meshDataSource;
+    }
+
+    HdContainerDataSourceEditor editor(meshDataSource);
+
+    for (auto it: *_customPrimvars) {
+        editor.Set(
+            HdDataSourceLocator(it.first),
+            HdPrimvarSchema::Builder()
+            .SetPrimvarValue(it.second)
+            .SetInterpolation(constantInterp)
+            .Build());
+    }
+
+    return editor.Finish();
+}
+
+HdContainerDataSourceHandle
+FileMeshInstance::GetMaterialDataSource() const
+{
+    if (_material.IsEmpty()) {
+        return HdContainerDataSourceHandle();
+    }
+
+    return HdRetainedContainerDataSource::New(
+        HdMaterialBindingsSchemaTokens->allPurpose,
+        HdMaterialBindingSchema::Builder()
+        .SetPath(
+            HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
+        .Build());
+}
+
+}  // namespace glmhydra
