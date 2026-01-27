@@ -12,11 +12,10 @@ namespace glmhydra {
 PXR_NAMESPACE_USING_DIRECTIVE
 
 /*
- * Adds xform, material and custom primvar data sources to the data
- * sources for a mesh's topology and geometry (provided by
- * FileMeshAdapter). This class is separated from FileMeshAdapter so
- * that multiple instances can share the same mesh but with different
- * transformations and materials.
+ * Adds xform, material and custom primvar data sources to the data sources for
+ * a mesh's topology and geometry (provided by FileMeshAdapter). This class is
+ * separated from FileMeshAdapter so that multiple instances can share the same
+ * mesh but with different transformations and materials.
  */
 class FileMeshInstance
 {
@@ -29,8 +28,7 @@ public:
         const std::shared_ptr<FileMeshAdapter>& adapter,
         const SdfPath& material, const PrimvarDSMapRef& customPrimvars);
 
-    void SetTransform(
-        const float pos[3], const float rot[4], float scale);
+    void SetTransform(const float pos[3], const float rot[4], float scale);
 
     // TODO: variant of SetTransform() with shutter offsets
 

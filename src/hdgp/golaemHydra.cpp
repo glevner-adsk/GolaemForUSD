@@ -63,6 +63,7 @@ using glmhydra::FileMeshAdapter;
 using glmhydra::FileMeshInstance;
 
 TF_DEBUG_CODES(
+    GLMHYDRA_TRACE,
     GLMHYDRA_DEPENDENCIES,
     GLMHYDRA_MOTION_BLUR
 );
@@ -95,20 +96,19 @@ TF_DEFINE_PRIVATE_TOKENS(
 );
 
 /*
- * If true, rigid mesh entities are treated differently: a single
- * instance of FileMeshAdapter is created for a given rigid mesh, and
- * FileMeshInstance is used to add different materials, transforation
- * matrices and custom primvars for each instance.
+ * If true, rigid mesh entities are treated differently: a single instance of
+ * FileMeshAdapter is created for a given rigid mesh, and FileMeshInstance is
+ * used to add different materials, transforation matrices and custom primvars
+ * for each instance.
  *
- * For now, though, this is disabled, because I don't know how to
- * calculate the transformation matrix for a mesh.
+ * For now, though, this is disabled, because I don't know how to calculate the
+ * transformation matrix for a mesh.
  */
 const bool kEnableRigidEntities = false;
 
 /*
- * We use a hash map to store an entity's custom primvars (name and
- * data source for each), which are generated from shader attributes
- * and PP attributes.
+ * We use a hash map to store an entity's custom primvars (name and data source
+ * for each), which are generated from shader attributes and PP attributes.
  */
 using PrimvarDataSourceMap =
     TfDenseHashMap<TfToken, HdSampledDataSourceHandle, TfHash>;
@@ -150,8 +150,7 @@ struct Args
 };
 
 /*
- * Information needed by the renderer for each entity in bbox display
- * mode.
+ * Information needed by the renderer for each entity in bbox display mode.
  */
 struct BBoxEntityData
 {
@@ -161,8 +160,7 @@ struct BBoxEntityData
 };
 
 /*
- * Information needed by the renderer for each entity in mesh display
- * mode.
+ * Information needed by the renderer for each entity in mesh display mode.
  */
 struct MeshEntityData
 {
@@ -222,12 +220,12 @@ public:
 
     virtual ~GolaemProcedural()
     {
-        std::cout << "deleting factory... " << std::flush;
+        TF_DEBUG_MSG(GLMHYDRA_TRACE, "deleting simulation cache factory...");
         delete _factory;
-        std::cout << "done" << std::endl;
-        std::cout << "calling finish()... " << std::flush;
+        TF_DEBUG_MSG(GLMHYDRA_TRACE, " done\n");
+        TF_DEBUG_MSG(GLMHYDRA_TRACE, "calling glm::usdplugin::finish()...");
         glm::usdplugin::finish();
-        std::cout << "done" << std::endl;
+        TF_DEBUG_MSG(GLMHYDRA_TRACE, " done\n");
     }
 
     DependencyMap UpdateDependencies(
@@ -237,8 +235,7 @@ public:
         const HdSceneIndexBaseRefPtr& inputScene,
         const ChildPrimTypeMap& previousResult,
         const DependencyMap& dirtiedDependencies,
-        HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims)
-        override;
+        HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims) override;
 
     HdSceneIndexPrim GetChildPrim(
         const HdSceneIndexBaseRefPtr& /*inputScene*/,
@@ -249,16 +246,14 @@ private:
     void InitCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     std::vector<std::shared_ptr<FileMeshInstance>> GenerateMeshes(
-        CachedSimulation& cachedSimulation, double frame,
-        int entityIndex, bool motionBlur, const GfVec2d& shutter,
-        bool lodEnabled, const GfVec3d& cameraPos,
-        const GfVec3d& entityPos, size_t *lodLevel);
+        CachedSimulation& cachedSimulation, double frame, int entityIndex,
+        bool motionBlur, const GfVec2d& shutter,
+        bool lodEnabled, const GfVec3d& cameraPos, const GfVec3d& entityPos,
+        size_t *lodLevel);
     PrimvarDataSourceMapRef GenerateCustomPrimvars(
-        const GlmSimulationData *simData,
-        const GlmFrameData *frameData,
+        const GlmSimulationData *simData, const GlmFrameData *frameData,
         const ShaderAssetDataContainer *shaderData,
-        const GolaemCharacter *character,
-        int entityIndex) const;
+        const GolaemCharacter *character, int entityIndex) const;
 
     using _ChildIndexMap = std::unordered_map<SdfPath, size_t, TfHash>;
     using _ChildIndexPairMap =
@@ -273,13 +268,12 @@ private:
     // actual cache directory after applying dirmap rules
     GlmString _mappedCacheDir;
 
-    // in bbox display mode, maps the path of a Hydra prim to an index
-    // into _bboxEntities
+    // in bbox display mode, maps the path of a Hydra prim to an index into
+    // _bboxEntities
     _ChildIndexMap _childIndices;
 
-    // in mesh display mode, maps the path of a Hydra prim to a pair
-    // of indices: an index into _meshEntities, and an index into that
-    // structure's meshes
+    // in mesh display mode, maps the path of a Hydra prim to a pair of indices:
+    // an index into _meshEntities, and an index into that structure's meshes
     _ChildIndexPairMap _childIndexPairs;
 
     // the Golaem simulation cache factory
@@ -295,8 +289,7 @@ private:
     std::vector<MeshEntityData> _meshEntities;
 
     // cache of reusable FileMeshAdapter instances for rigid meshes
-    std::unordered_map<
-        MeshKey, std::shared_ptr<FileMeshAdapter>, MeshKey::Hash>
+    std::unordered_map<MeshKey, std::shared_ptr<FileMeshAdapter>, MeshKey::Hash>
     _rigidMeshCache;
 };
 
@@ -320,8 +313,8 @@ void GetTypedPrimvar(
 }
 
 /*
- * Fetches a primvar which is a token containing a list of names
- * separated by semicolons. Stores the names found in result.
+ * Fetches a primvar which is a token containing a list of names separated by
+ * semicolons. Stores the names found in result.
  */
 void GetTokenArrayPrimvar(
     HdPrimvarsSchema& primvars, TfToken token, VtTokenArray& result)
@@ -335,8 +328,7 @@ void GetTokenArrayPrimvar(
             std::string str = v.UncheckedGet<TfToken>();
             std::string::size_type pos, lastpos = 0;
             while ((pos = str.find(';', lastpos)) != std::string::npos) {
-                result.push_back(
-                    TfToken(str.substr(lastpos, pos - lastpos)));
+                result.push_back(TfToken(str.substr(lastpos, pos - lastpos)));
                 lastpos = pos + 1;
             }
             if (result.empty()) {
@@ -349,15 +341,12 @@ void GetTokenArrayPrimvar(
     }
 }
 
-Args GolaemProcedural::GetArgs(
-    const HdSceneIndexBaseRefPtr& inputScene)
+Args GolaemProcedural::GetArgs(const HdSceneIndexBaseRefPtr& inputScene)
 {
     Args result;
 
-    HdSceneIndexPrim prim =
-        inputScene->GetPrim(_GetProceduralPrimPath());
-    HdPrimvarsSchema primvars =
-        HdPrimvarsSchema::GetFromParent(prim.dataSource);
+    HdSceneIndexPrim prim = inputScene->GetPrim(_GetProceduralPrimPath());
+    HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(prim.dataSource);
 
     GetTokenArrayPrimvar(
         primvars, golaemTokens->crowdFields, result.crowdFields);
@@ -384,17 +373,15 @@ Args GolaemProcedural::GetArgs(
     GetTypedPrimvar(
         primvars, golaemTokens->dirmap, result.dirmap);
     GetTypedPrimvar(
-        primvars, golaemTokens->materialAssignMode,
-        result.materialAssignMode);
+        primvars, golaemTokens->materialAssignMode, result.materialAssignMode);
     GetTypedPrimvar(
-        primvars, golaemTokens->enableMotionBlur,
-        result.enableMotionBlur);
+        primvars, golaemTokens->enableMotionBlur, result.enableMotionBlur);
     GetTypedPrimvar(
         primvars, golaemTokens->enableLod, result.enableLod);
 
-    // a primvar cannot be a relationship, so we convert the
-    // materialPath argument (a token) to an SdfPath, which can be
-    // relative to the procedural prim
+    // a primvar cannot be a relationship, so we convert the materialPath
+    // argument (a token) to an SdfPath, which can be relative to the procedural
+    // prim
 
     TfToken matpath;
     GetTypedPrimvar(primvars, golaemTokens->materialPath, matpath);
@@ -414,15 +401,12 @@ Args GolaemProcedural::GetArgs(
 }
 
 /*
- * Called by Update() one time only, once the arguments (cache file,
- * crowd field names, etc.) are known. We assume that the arguments
- * never change.
+ * Called by Update() one time only, once the arguments (cache file, crowd field
+ * names, etc.) are known. We assume that the arguments never change.
  */
-void GolaemProcedural::InitCrowd(
-    const HdSceneIndexBaseRefPtr& /*inputScene*/)
+void GolaemProcedural::InitCrowd(const HdSceneIndexBaseRefPtr& /*inputScene*/)
 {
-    // apply dirmap rules to find actual paths of character files and
-    // load them
+    // apply dirmap rules to find actual paths of character files and load them
 
     if (_args.characterFiles.size() > 0) {
         glm::Array<GlmString> fileList;
@@ -432,10 +416,12 @@ void GolaemProcedural::InitCrowd(
             GlmString mappedPath;
             findDirmappedFile(mappedPath, fileList[i], _dirmapRules);
             fileList[i] = mappedPath;
+            TF_DEBUG_MSG(
+                GLMHYDRA_TRACE, "loading Golaem character file: %s\n",
+                mappedPath.c_str());
         }
 
-        GlmString characterFiles =
-            glm::stringArrayToString(fileList, ";");
+        GlmString characterFiles = glm::stringArrayToString(fileList, ";");
         _factory->loadGolaemCharacters(characterFiles);
     }
 
@@ -471,8 +457,7 @@ void GolaemProcedural::InitCrowd(
         if (!_args.terrainFile.IsEmpty()) {
             GlmString mappedPath;
             findDirmappedFile(
-                mappedPath, _args.terrainFile.GetString(),
-                _dirmapRules);
+                mappedPath, _args.terrainFile.GetString(), _dirmapRules);
             dstTerrain = glm::crowdio::crowdTerrain::loadTerrainAsset(
                 mappedPath.c_str());
         }
@@ -503,9 +488,9 @@ double GetCurrentFrame(const HdSceneIndexBaseRefPtr& inputScene)
 }
 
 /*
- * Fetches and returns the shutter interval for motion blur from the
- * active render settings prim, if there is one. Returns true if there
- * is, false if not.
+ * Fetches and returns the shutter interval for motion blur from the active
+ * render settings prim, if there is one. Returns true if there is, false if
+ * not.
  */
 bool GetShutterFromRenderSettings(
     const HdSceneIndexBaseRefPtr& inputScene, GfVec2d *shutter)
@@ -543,8 +528,7 @@ bool GetShutterFromRenderSettings(
 }
 
 /*
- * Returns the global transformation matrix for the prim at the given
- * path.
+ * Returns the global transformation matrix for the prim at the given path.
  */
 GfMatrix4d GetPrimWorldMatrix(
     const HdSceneIndexBaseRefPtr& inputScene, SdfPath path)
@@ -596,12 +580,10 @@ SdfPath GetCameraPath(const HdSceneIndexBaseRefPtr& inputScene)
 }
 
 /*
- * Fetches and returns the location in world coordinates of the
- * primary camera, if there is one. Returns true if there is, false if
- * not.
+ * Fetches and returns the location in world coordinates of the primary camera,
+ * if there is one. Returns true if there is, false if not.
  */
-bool GetCameraPos(
-    const HdSceneIndexBaseRefPtr& inputScene, GfVec3d *pos)
+bool GetCameraPos(const HdSceneIndexBaseRefPtr& inputScene, GfVec3d *pos)
 {
     const SdfPath camPath = GetCameraPath(inputScene);
     if (camPath.IsEmpty()) {
@@ -613,8 +595,8 @@ bool GetCameraPos(
 }
 
 /*
- * Fetches and returns the shutter interval from the primary camera
- * prim, if there is one. Returns true if there is, false if not.
+ * Fetches and returns the shutter interval from the primary camera prim, if
+ * there is one. Returns true if there is, false if not.
  */
 bool GetShutterFromCamera(
     const HdSceneIndexBaseRefPtr& inputScene, GfVec2d *shutter)
@@ -647,10 +629,8 @@ HdContainerDataSourceHandle GetExtentDataSource(
     const GfVec3d& min, const GfVec3d& max)
 {
     return HdExtentSchema::Builder()
-        .SetMin(
-            HdRetainedTypedSampledDataSource<GfVec3d>::New(min))
-        .SetMax(
-            HdRetainedTypedSampledDataSource<GfVec3d>::New(max))
+        .SetMin(HdRetainedTypedSampledDataSource<GfVec3d>::New(min))
+        .SetMax(HdRetainedTypedSampledDataSource<GfVec3d>::New(max))
         .Build();
 }
 
@@ -666,14 +646,11 @@ HdContainerDataSourceHandle GetCubeMeshDataSource()
         {0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1,
             7, 5, 3, 6, 0, 2, 4};
 
-    using IntArrayDs =
-        HdRetainedTypedSampledDataSource<VtIntArray>;
+    using IntArrayDs = HdRetainedTypedSampledDataSource<VtIntArray>;
 
-    static const IntArrayDs::Handle fvcDs =
-        IntArrayDs::New(faceVertexCounts);
+    static const IntArrayDs::Handle fvcDs = IntArrayDs::New(faceVertexCounts);
 
-    static const IntArrayDs::Handle fviDs =
-        IntArrayDs::New(faceVertexIndices);
+    static const IntArrayDs::Handle fviDs = IntArrayDs::New(faceVertexIndices);
 
     static const HdContainerDataSourceHandle meshDs =
         HdMeshSchema::Builder()
@@ -701,8 +678,7 @@ HdContainerDataSourceHandle GetCubePrimvarsDataSource()
         {-1.0f, -1.0f, -1.0f},
         {1.0f, -1.0f, -1.0f}};
 
-    using PointArrayDs =
-        HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
+    using PointArrayDs = HdRetainedTypedSampledDataSource<VtArray<GfVec3f>>;
 
     static const HdContainerDataSourceHandle primvarsDs =
         HdRetainedContainerDataSource::New(
@@ -710,11 +686,9 @@ HdContainerDataSourceHandle GetCubePrimvarsDataSource()
             HdPrimvarSchema::Builder()
                 .SetPrimvarValue(PointArrayDs::New(points))
                 .SetInterpolation(HdPrimvarSchema::
-                    BuildInterpolationDataSource(
-                        HdPrimvarSchemaTokens->vertex))
+                    BuildInterpolationDataSource(HdPrimvarSchemaTokens->vertex))
                 .SetRole(HdPrimvarSchema::
-                    BuildRoleDataSource(
-                        HdPrimvarSchemaTokens->point))
+                    BuildRoleDataSource(HdPrimvarSchemaTokens->point))
                 .Build()
         );
 
@@ -733,20 +707,18 @@ HdContainerDataSourceHandle GetCubeExtentDataSource()
 }
 
 /*
- * Called by Update() to query the Golaem cache for the frame to be
- * rendered. Regenerates either _bboxEntities or _meshEntities,
- * depending on the display mode, which is then used by GetChildPrim()
- * to generate meshes.
+ * Called by Update() to query the Golaem cache for the frame to be rendered.
+ * Regenerates either _bboxEntities or _meshEntities, depending on the display
+ * mode, which is then used by GetChildPrim() to generate meshes.
  */
-void GolaemProcedural::PopulateCrowd(
-    const HdSceneIndexBaseRefPtr& inputScene)
+void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
 {
     // fetch the current frame number
 
     double frame = GetCurrentFrame(inputScene);
 
-    // fetch the camera position and the root prim's transformation
-    // matrix, for LOD computation
+    // fetch the camera position and the root prim's transformation matrix, for
+    // LOD computation
 
     bool lodEnabled;
     GfVec3d cameraPos;
@@ -761,8 +733,8 @@ void GolaemProcedural::PopulateCrowd(
         rootMtx.SetIdentity();
     }
 
-    // fetch the shutter interval from the render settings or from the
-    // primary camera, if motion blur is enabled
+    // fetch the shutter interval from the render settings or from the primary
+    // camera, if motion blur is enabled
 
     bool motionBlur = false;
     GfVec2d shutter;
@@ -809,8 +781,7 @@ void GolaemProcedural::PopulateCrowd(
         }
 
         const GlmFrameData *frameData =
-            cachedSimulation.getFinalFrameData(
-                frame, UINT32_MAX, true);
+            cachedSimulation.getFinalFrameData(frame, UINT32_MAX, true);
 
         if (frameData == nullptr) {
             continue;
@@ -818,8 +789,7 @@ void GolaemProcedural::PopulateCrowd(
 
         int entityCount = simData->_entityCount;
         if (_args.renderPercent < 100.0f) {
-            entityCount =
-                std::lround(entityCount * _args.renderPercent * 0.01f);
+            entityCount = std::lround(entityCount * _args.renderPercent * 0.01f);
         }
         if (_args.displayMode == golaemTokens->bbox) {
             _bboxEntities.reserve(_bboxEntities.size() + entityCount);
@@ -853,8 +823,7 @@ void GolaemProcedural::PopulateCrowd(
             GfVec3f localPos(0);
             GfVec3d globalPos(0);
 
-            if (_args.displayMode == golaemTokens->bbox
-                || lodEnabled) {
+            if (_args.displayMode == golaemTokens->bbox || lodEnabled) {
                 const auto& animData = character->_converterMapping;
                 const auto *rootBone =
                     animData._skeletonDescription->getRootBone();
@@ -865,8 +834,7 @@ void GolaemProcedural::PopulateCrowd(
                     + simData->_iBoneOffsetPerEntityType[entityType]
                     + simData->_indexInEntityType[ientity] * boneCount;
 
-                localPos.Set(
-                    frameData->_bonePositions[frameDataIndex]);
+                localPos.Set(frameData->_bonePositions[frameDataIndex]);
             }
 
             // save data needed for rendering bounding boxes
@@ -899,20 +867,15 @@ void GolaemProcedural::PopulateCrowd(
                 entity.entityIndex = ientity;
                 entity.crowdFieldIndex = static_cast<uint32_t>(ifield);
                 entity.meshes = GenerateMeshes(
-                    cachedSimulation, frame, ientity, motionBlur,
-                    shutter, lodEnabled, cameraPos, globalPos,
-                    &lodLevel);
+                    cachedSimulation, frame, ientity, motionBlur, shutter,
+                    lodEnabled, cameraPos, globalPos, &lodLevel);
                 entity.lodIndex = static_cast<uint32_t>(lodLevel);
 
-                const glm::GeometryAsset *asset =
-                    character->getGeometryAsset(
-                        static_cast<short>(_args.geometryTag),
-                        lodLevel);
-                const glm::Vector3& localExtent =
-                    asset->_halfExtentsYUp;
+                const glm::GeometryAsset *asset = character->getGeometryAsset(
+                    static_cast<short>(_args.geometryTag), lodLevel);
+                const glm::Vector3& localExtent = asset->_halfExtentsYUp;
 
-                GfVec3d extent(
-                    localExtent.x, localExtent.y, localExtent.z);
+                GfVec3d extent(localExtent.x, localExtent.y, localExtent.z);
                 extent *= simData->_scales[ientity];
                 entity.extent = GetExtentDataSource(
                     -extent + localPos, extent + localPos);
@@ -922,18 +885,16 @@ void GolaemProcedural::PopulateCrowd(
 }
 
 /*
- * Finds all the shader and PP attributes defined for the given entity
- * and generates a Hydra data source of the appropriate type for each.
- * Returns a shared pointer to a hash map containing the name and data
- * source for each. Pass that hash map to each FileMeshInstance so
- * that all of the mesh's entities share them.
+ * Finds all the shader and PP attributes defined for the given entity and
+ * generates a Hydra data source of the appropriate type for each.  Returns a
+ * shared pointer to a hash map containing the name and data source for each.
+ * Pass that hash map to each FileMeshInstance so that all of the mesh's
+ * entities share them.
  */
 PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
-    const GlmSimulationData *simData,
-    const GlmFrameData *frameData,
+    const GlmSimulationData *simData, const GlmFrameData *frameData,
     const ShaderAssetDataContainer* shaderData,
-    const GolaemCharacter *character,
-    int entityIndex) const
+    const GolaemCharacter *character, int entityIndex) const
 {
     PrimvarDataSourceMapRef dataSources =
         std::make_shared<PrimvarDataSourceMap>();
@@ -969,8 +930,8 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
     for (size_t i = 0; i < shaderAttrCount; ++i) {
         const ShaderAttribute& attr = character->_shaderAttributes[i];
 
-        // ensure the attribute name is a valid identifier, and maybe
-        // prefix it with "arnold:"
+        // ensure the attribute name is a valid identifier, and maybe prefix it
+        // with "arnold:"
 
         std::string stdname;
         GlmString glmname = attr._name.c_str();
@@ -978,8 +939,7 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
         glm::crowdio::RendererAttributeType::Value overrideType =
             glm::crowdio::RendererAttributeType::END;
         if (glm::crowdio::parseRendererAttribute(
-                "arnold", attr._name, glmname, subAttrName,
-                overrideType)) {
+                "arnold", attr._name, glmname, subAttrName, overrideType)) {
             stdname = "arnold:" + TfMakeValidIdentifier(glmname.c_str());
         } else {
             stdname = TfMakeValidIdentifier(glmname.c_str());
@@ -1016,16 +976,14 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
     // PP attributes (float and vector)
 
     for (size_t i = 0; i < simData->_ppFloatAttributeCount; ++i) {
-        TfToken name(
-            TfMakeValidIdentifier(simData->_ppFloatAttributeNames[i]));
+        TfToken name(TfMakeValidIdentifier(simData->_ppFloatAttributeNames[i]));
         (*dataSources)[name] =
             HdRetainedTypedSampledDataSource<float>::New(
                 frameData->_ppFloatAttributeData[i][bakeIndex]);
     }
 
     for (size_t i = 0; i < simData->_ppVectorAttributeCount; ++i) {
-        TfToken name(
-            TfMakeValidIdentifier(simData->_ppVectorAttributeNames[i]));
+        TfToken name(TfMakeValidIdentifier(simData->_ppVectorAttributeNames[i]));
         (*dataSources)[name] =
             HdRetainedTypedSampledDataSource<GfVec3f>::New(
                 GfVec3f(frameData->_ppVectorAttributeData[i][bakeIndex]));
@@ -1035,21 +993,20 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 }
 
 /*
- * Generates and returns a FileMeshInstance for each mesh constituting
- * the given entity at the given frame.
+ * Generates and returns a FileMeshInstance for each mesh constituting the given
+ * entity at the given frame.
  */
 std::vector<std::shared_ptr<FileMeshInstance>>
 GolaemProcedural::GenerateMeshes(
     CachedSimulation& cachedSimulation, double frame, int entityIndex,
     bool motionBlur, const GfVec2d& shutter, bool lodEnabled,
-    const GfVec3d& cameraPos, const GfVec3d& entityPos,
-    size_t *lodLevel)
+    const GfVec3d& cameraPos, const GfVec3d& entityPos, size_t *lodLevel)
 {
     std::vector<std::shared_ptr<FileMeshInstance>> instances;
 
     // fetch simulation data, frame data and assets, then call
-    // glmPrepareEntityGeometry() to generate information about this
-    // entity at this frame
+    // glmPrepareEntityGeometry() to generate information about this entity at
+    // this frame
 
     const GlmSimulationData *simData =
         cachedSimulation.getFinalSimulationData();
@@ -1126,8 +1083,7 @@ GolaemProcedural::GenerateMeshes(
 
     if (geoStatus != glm::crowdio::GIO_SUCCESS) {
         std::cerr << "glmPrepareEntityGeometry() returned error: "
-                  << glmConvertGeometryGenerationStatus(geoStatus)
-                  << '\n';
+                  << glmConvertGeometryGenerationStatus(geoStatus) << '\n';
         return instances;
     }
 
@@ -1163,10 +1119,8 @@ GolaemProcedural::GenerateMeshes(
         // fetch the mesh itself
 
         const GlmFileMeshTransform& meshXform =
-            geoFile._transforms[
-                outputData._transformIndicesInGcgFile[imesh]];
-        const GlmFileMesh& fileMesh =
-            geoFile._meshes[meshXform._meshIndex];
+            geoFile._transforms[outputData._transformIndicesInGcgFile[imesh]];
+        const GlmFileMesh& fileMesh = geoFile._meshes[meshXform._meshIndex];
 
         // append the name of its material to the material path
 
@@ -1200,14 +1154,13 @@ GolaemProcedural::GenerateMeshes(
                 }
             }
 
-            material =
-                _args.materialPath.AppendElementString(matname);
+            material = _args.materialPath.AppendElementString(matname);
         }
 
-        // construct an instance of FileMeshAdapter to generate Hydra
-        // data sources for the mesh's topology and geometry; if the
-        // mesh is rigid, we can cache the FileMeshAdapter and reuse
-        // it for all instances of the same mesh
+        // construct an instance of FileMeshAdapter to generate Hydra data
+        // sources for the mesh's topology and geometry; if the mesh is rigid,
+        // we can cache the FileMeshAdapter and reuse it for all instances of
+        // the same mesh
 
         std::shared_ptr<FileMeshAdapter> adapter;
         bool isRigid = kEnableRigidEntities
@@ -1238,8 +1191,8 @@ GolaemProcedural::GenerateMeshes(
             }
         }
 
-        // construct a FileMeshInstance to add data sources for the
-        // mesh's material, custom primvars and xform (if it is rigid)
+        // construct a FileMeshInstance to add data sources for the mesh's
+        // material, custom primvars and xform (if it is rigid)
 
         std::shared_ptr<FileMeshInstance> instance =
             std::make_shared<FileMeshInstance>(
@@ -1247,8 +1200,8 @@ GolaemProcedural::GenerateMeshes(
 
         if (isRigid) {
 
-            // TODO: this is wrong! I don't know how to calculate the
-            // mesh's transformation matrix correctly.
+            // TODO: this is wrong! I don't know how to calculate the mesh's
+            // transformation matrix correctly.
 
             auto boneIndex = meshXform._rigidSkinningBoneId;
             auto entityType = simData->_entityTypes[entityIndex];
@@ -1270,13 +1223,12 @@ GolaemProcedural::GenerateMeshes(
 }
 
 /*
- * Entry point called by Hydra to ask what data sources of what prims
- * the procedural depends on, that is, what changes will cause Hydra
- * to call Update() again.
+ * Entry point called by Hydra to ask what data sources of what prims the
+ * procedural depends on, that is, what changes will cause Hydra to call
+ * Update() again.
  */
 HdGpGenerativeProcedural::DependencyMap
-GolaemProcedural::UpdateDependencies(
-    const HdSceneIndexBaseRefPtr &inputScene)
+GolaemProcedural::UpdateDependencies(const HdSceneIndexBaseRefPtr &inputScene)
 {
     DependencyMap result;
 
@@ -1291,8 +1243,8 @@ GolaemProcedural::UpdateDependencies(
         return result;
     }
 
-    // update when the camera changes if motion blur or LOD is enabled
-    // (and note the path of the camera prim for later)
+    // update when the camera changes if motion blur or LOD is enabled (and note
+    // the path of the camera prim for later)
 
     SdfPath camPath;
 
@@ -1312,10 +1264,10 @@ GolaemProcedural::UpdateDependencies(
         result[camPath].insert(HdXformSchema::GetDefaultLocator());
     }
 
-    // if motion blur is enabled, update when the render settings
-    // change or when the shutter interval changes: if there is an
-    // active render settings prim, get the shutter interval from
-    // there, otherwise use the primary camera's shutter settings
+    // if motion blur is enabled, update when the render settings change or when
+    // the shutter interval changes: if there is an active render settings prim,
+    // get the shutter interval from there, otherwise use the primary camera's
+    // shutter settings
 
     if (_args.enableMotionBlur) {
         result[primPath].insert(
@@ -1354,13 +1306,13 @@ GolaemProcedural::UpdateDependencies(
 }
 
 /*
- * Entry point called by Hydra to "cook" the procedural. It returns a
- * list of the procedural's child prims and their types. If a given
- * prim was already present in the previous call to Update(), it also
- * tells Hydra which of its data sources may have changed since then.
+ * Entry point called by Hydra to "cook" the procedural. It returns a list of
+ * the procedural's child prims and their types. If a given prim was already
+ * present in the previous call to Update(), it also tells Hydra which of its
+ * data sources may have changed since then.
  *
- * After Update() returns, Hydra will call GetChildPrim() (in multiple
- * parallel threads) for the actual content of each prim.
+ * After Update() returns, Hydra will call GetChildPrim() (in multiple parallel
+ * threads) for the actual content of each prim.
  */
 HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
     const HdSceneIndexBaseRefPtr& inputScene,
@@ -1372,19 +1324,17 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         && dirtiedDependencies.size() > 0) {
         std::ostringstream strm;
         for (const auto& pair: dirtiedDependencies) {
-            strm << "dirtied prim: " << pair.first << " "
-                 << pair.second << '\n';
+            strm << "dirtied prim: " << pair.first << " " << pair.second << '\n';
         }
         TfDebug::Helper().Msg(strm.str());
     }
 
-    // fetch arguments (primvars) the first time only (we assume they
-    // never change), then (re)populate the scene
+    // fetch arguments (primvars) the first time only (we assume they never
+    // change), then (re)populate the scene
 
     if (_updateCount == 0) {
         _args = GetArgs(inputScene);
-        _dirmapRules = glm::stringToStringArray(
-            _args.dirmap.GetString(), ";");
+        _dirmapRules = glm::stringToStringArray(_args.dirmap.GetString(), ";");
         findDirmappedFile(
             _mappedCacheDir, _args.cacheDir.GetString(), _dirmapRules);
         InitCrowd(inputScene);
@@ -1410,8 +1360,8 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
             result[childPath] = HdPrimTypeTokens->mesh;
             _childIndices[childPath] = i;
 
-            // if the same path was generated by the previous call to
-            // Update(), too, tell Hydra its xform may have changed
+            // if the same path was generated by the previous call to Update(),
+            // too, tell Hydra its xform may have changed
 
             if (previousResult.size() > 0) {
                 outputDirtiedPrims->emplace_back(
@@ -1431,18 +1381,17 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         for (size_t i = 0; i < _meshEntities.size(); ++i) {
             const MeshEntityData& entity = _meshEntities[i];
 
-            // including the crowd field, entity, LOD and mesh in the
-            // path enables us to tell Hydra that, if the same prim
-            // appears in two successive updates, only the points,
-            // normals and extent will have changed (not the topology)
+            // including the crowd field, entity, LOD and mesh in the path
+            // enables us to tell Hydra that, if the same prim appears in two
+            // successive updates, only the points, normals and extent will have
+            // changed (not the topology)
 
-            // a group node that provides the extent for all the
-            // meshes beneath it
+            // a group node that provides the extent for all the meshes beneath
+            // it
 
             std::snprintf(
                 buffer, sizeof(buffer), "c%ue%zul%u",
-                entity.crowdFieldIndex, entity.entityIndex,
-                entity.lodIndex);
+                entity.crowdFieldIndex, entity.entityIndex, entity.lodIndex);
             SdfPath groupPath = myPath.AppendChild(TfToken(buffer));
             _childIndexPairs[groupPath] =
                 {i, std::numeric_limits<size_t>::max()};
@@ -1468,11 +1417,9 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                     bool isRigid = kEnableRigidEntities
                         && entity.meshes[j]->IsRigid();
                     if (isRigid) {
-                        locators.append(
-                            HdXformSchema::GetDefaultLocator());
+                        locators.append(HdXformSchema::GetDefaultLocator());
                     }
-                    outputDirtiedPrims->emplace_back(
-                        childPath, locators);
+                    outputDirtiedPrims->emplace_back(childPath, locators);
                 }
             }
         }
@@ -1482,12 +1429,11 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 }
 
 /*
- * Entry point called by Hydra to retrieve the contents of a single
- * prim. This method may be called concurrently by multiple threads.
+ * Entry point called by Hydra to retrieve the contents of a single prim. This
+ * method may be called concurrently by multiple threads.
  */
 HdSceneIndexPrim GolaemProcedural::GetChildPrim(
-    const HdSceneIndexBaseRefPtr &/*inputScene*/,
-    const SdfPath &childPrimPath)
+    const HdSceneIndexBaseRefPtr &/*inputScene*/, const SdfPath &childPrimPath)
 {
     HdSceneIndexPrim result;
 
@@ -1508,8 +1454,7 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         result.dataSource = HdRetainedContainerDataSource::New(
             HdXformSchemaTokens->xform,
             HdXformSchema::Builder()
-            .SetMatrix(
-                HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
+            .SetMatrix(HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
             .Build(),
             HdExtentSchemaTokens->extent,
             GetCubeExtentDataSource(),
@@ -1540,9 +1485,8 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
                 meshEntity.extent);
         }
 
-        // child nodes supply the xform, mesh and material bindings
-        // (note that RenderMan refuses to render a mesh that does not
-        // provide an xform!)
+        // child nodes supply the xform, mesh and material bindings (note that
+        // RenderMan refuses to render a mesh that does not provide an xform!)
 
         else {
             const std::shared_ptr<FileMeshInstance>& instance =
@@ -1587,6 +1531,8 @@ TF_REGISTRY_FUNCTION(TfType)
 
 TF_REGISTRY_FUNCTION(TfDebug)
 {
+    TF_DEBUG_ENVIRONMENT_SYMBOL(
+        GLMHYDRA_TRACE, "track loading of characters and cleanup");
     TF_DEBUG_ENVIRONMENT_SYMBOL(
         GLMHYDRA_DEPENDENCIES, "track dependencies and dirtied prims");
     TF_DEBUG_ENVIRONMENT_SYMBOL(

@@ -11,8 +11,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 static const HdContainerDataSourceHandle identityXform =
     HdXformSchema::Builder()
     .SetMatrix(
-        HdRetainedTypedSampledDataSource<GfMatrix4d>::New(
-            GfMatrix4d(1.0)))
+        HdRetainedTypedSampledDataSource<GfMatrix4d>::New(GfMatrix4d(1.0)))
     .Build();
 
 static const HdTokenDataSourceHandle constantInterp =
@@ -41,8 +40,7 @@ void FileMeshInstance::SetTransform(
     mtx.SetTranslateOnly(GfVec3d(pos[0], pos[1], pos[2]));
 
     _xform = HdXformSchema::Builder()
-        .SetMatrix(
-            HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
+        .SetMatrix(HdRetainedTypedSampledDataSource<GfMatrix4d>::New(mtx))
         .Build();
 }
 
@@ -80,8 +78,7 @@ FileMeshInstance::GetMaterialDataSource() const
     return HdRetainedContainerDataSource::New(
         HdMaterialBindingsSchemaTokens->allPurpose,
         HdMaterialBindingSchema::Builder()
-        .SetPath(
-            HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
+        .SetPath(HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
         .Build());
 }
 

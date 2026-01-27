@@ -20,16 +20,15 @@ namespace glmhydra {
 PXR_NAMESPACE_USING_DIRECTIVE
 
 /*
- * Class which provides Hydra data sources wrapping the topology and
- * UVs found in a GlmFileMesh, as well as the deformed vertices and
- * normals at any given frame. Use FileMeshInstance to add an xform,
- * a material and any custom primvars.
+ * Class which provides Hydra data sources wrapping the topology and UVs found
+ * in a GlmFileMesh, as well as the deformed vertices and normals at any given
+ * frame. Use FileMeshInstance to add an xform, a material and any custom
+ * primvars.
  */
 class FileMeshAdapter
 {
 public:
-    using DeformedVectors =
-        glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
+    using DeformedVectors = glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
 
     FileMeshAdapter(const glm::crowdio::GlmFileMesh& fileMesh);
 

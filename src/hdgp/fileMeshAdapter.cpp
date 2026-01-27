@@ -20,14 +20,13 @@ TF_DEFINE_PRIVATE_TOKENS(
 namespace glmhydra {
 
 /*
- * The FileMeshAdapter constructor makes copies of all the data it
- * needs, so all the arguments can be deleted afterwards. It does
- * little else, leaving as much work as possible for the methods which
- * return the data sources, because they may be called from multiple
- * threads.
+ * The FileMeshAdapter constructor makes copies of all the data it needs, so all
+ * the arguments can be deleted afterwards. It does little else, leaving as much
+ * work as possible for the methods which return the data sources, because they
+ * may be called from multiple threads.
  *
- * Call SetGeometry() afterwards to set the deformed vertices and
- * normals. (For a rigid mesh, this is unnecessary.)
+ * Call SetGeometry() afterwards to set the deformed vertices and normals. (For
+ * a rigid mesh, this is unnecessary.)
  */
 FileMeshAdapter::FileMeshAdapter(
     const glm::crowdio::GlmFileMesh& fileMesh)
@@ -57,13 +56,12 @@ FileMeshAdapter::FileMeshAdapter(
         }
     }
 
-    // note that if there are multiple UV sets, we only take the
-    // first; the others are ignored
+    // note that if there are multiple UV sets, we only take the first; the
+    // others are ignored
 
     if (fileMesh._uvSetCount > 0 && fileMesh._uvCoordCount[0] > 0) {
         _uvs.resize(fileMesh._uvCoordCount[0]);
-        if (_uvMode ==
-            glm::crowdio::GLM_UV_PER_POLYGON_VERTEX_INDEXED) {
+        if (_uvMode == glm::crowdio::GLM_UV_PER_POLYGON_VERTEX_INDEXED) {
             _uvIndices.resize(fileMesh._polygonsTotalVertexCount);
             for (int i = 0; i < _uvIndices.size(); ++i) {
                 _uvIndices[i] = fileMesh._polygonsUVIndices[i];
@@ -74,8 +72,7 @@ FileMeshAdapter::FileMeshAdapter(
         }
     }
 
-    // for a rigid body, copy the initial vertices and normals once
-    // and for all
+    // for a rigid body, copy the initial vertices and normals once and for all
 
     if (fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID) {
         VtVec3fArray v(_totalVertexCount);
@@ -132,17 +129,16 @@ void FileMeshAdapter::SetGeometry(
 }
 
 /*
- * Variation on SetGeometry() for motion blur. Specify any number of
- * shutter offsets and the deformed vertices and normals for each of
- * those offsets.
+ * Variation on SetGeometry() for motion blur. Specify any number of shutter
+ * offsets and the deformed vertices and normals for each of those offsets.
  *
  * It is assumed that the shutter offsets are given in order! That is,
  * HdRetainedTypedMultisampledDataSource makes that assumption.
  *
  * The DeformedVectors type corresponds to the vector arrays found in
- * glm::crowdio::OutputEntityGeoData. The arrays have three dimensions
- * -- corresponding to the frame index, the mesh index and the vector
- * index -- so we need the mesh index to access the vectors.
+ * glm::crowdio::OutputEntityGeoData. The arrays have three dimensions --
+ * corresponding to the frame index, the mesh index and the vector index -- so
+ * we need the mesh index to access the vectors.
  */
 void FileMeshAdapter::SetGeometry(
     const glm::Array<Time>& shutterOffsets,
@@ -156,8 +152,7 @@ void FileMeshAdapter::SetGeometry(
     assert(deformedNormals.size() == sampleCount);
     assert(!_isRigid);
 
-    _shutterOffsets.assign(
-        shutterOffsets.begin(), shutterOffsets.end());
+    _shutterOffsets.assign(shutterOffsets.begin(), shutterOffsets.end());
 
     _vertices.resize(sampleCount);
     _normals.resize(sampleCount);
@@ -179,8 +174,7 @@ HdContainerDataSourceHandle FileMeshAdapter::GetMeshDataSource() const
             .SetFaceVertexIndices(IntArrayDS::New(_vertexIndices))
             .Build())
         .SetSubdivisionScheme(
-            HdRetainedTypedSampledDataSource<TfToken>::New(
-                UsdGeomTokens->none))
+            HdRetainedTypedSampledDataSource<TfToken>::New(UsdGeomTokens->none))
         .Build();
 }
 
@@ -223,8 +217,7 @@ FileMeshAdapter::GetPrimvarsDataSource() const
         // normals may or may not be indexed
 
         HdPrimvarSchema::Builder normalBuilder;
-        if (_normalMode ==
-            glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
+        if (_normalMode == glm::crowdio::GLM_NORMAL_PER_POLYGON_VERTEX_INDEXED) {
             normalBuilder.SetIndexedPrimvarValue(
                 Vec3fArrayDS::New(
                     _shutterOffsets.size(),
@@ -239,8 +232,7 @@ FileMeshAdapter::GetPrimvarsDataSource() const
                     const_cast<VtVec3fArray*>(_normals.data())));
         }
 
-        // normals may or may not be shared by polygons using the
-        // same vertices
+        // normals may or may not be shared by polygons using the same vertices
 
         if (_normalMode ==
             glm::crowdio::GLM_NORMAL_PER_CONTROL_POINT) {
@@ -278,8 +270,7 @@ FileMeshAdapter::GetPrimvarsDataSource() const
             uvBuilder.SetPrimvarValue(Vec2fArrayDS::New(_uvs));
         }
 
-        // uvs may or may not be shared by polygons using the same
-        // vertices
+        // uvs may or may not be shared by polygons using the same vertices
 
         if (_uvMode ==
             glm::crowdio::GLM_UV_PER_CONTROL_POINT) {
