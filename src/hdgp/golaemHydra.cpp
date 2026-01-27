@@ -94,6 +94,15 @@ TF_DEFINE_PRIVATE_TOKENS(
     (none)
 );
 
+/*
+ * If true, rigid mesh entities are treated differently: a single
+ * instance of FileMeshAdapter is created for a given rigid mesh, and
+ * FileMeshInstance is used to add different materials, transforation
+ * matrices and custom primvars for each instance.
+ *
+ * For now, though, this is disabled, because I don't know how to
+ * calculate the transformation matrix for a mesh.
+ */
 const bool kEnableRigidEntities = false;
 
 /*
@@ -157,11 +166,44 @@ struct BBoxEntityData
  */
 struct MeshEntityData
 {
-    int entityIndex;
-    short crowdFieldIndex;
-    short lodIndex;
+    size_t entityIndex;
+    uint32_t crowdFieldIndex;
+    uint32_t lodIndex;
     std::vector<std::shared_ptr<FileMeshInstance>> meshes;
     HdContainerDataSourceHandle extent;
+};
+
+/*
+ * Key used to uniquely identify a mesh in the rigid mesh cache.
+ */
+struct MeshKey {
+    // from GlmSimulationData::_characterIdx
+    int32_t characterIndex;
+
+    // from OutputEntityGeoData::_geometryFileIndexes
+    int32_t lodIndex;
+
+    // from GlmFileMeshTransform::_meshIndex
+    uint16_t meshIndex;
+
+    bool operator==(const MeshKey& other) const {
+        return characterIndex == other.characterIndex
+            && lodIndex == other.lodIndex
+            && meshIndex == other.meshIndex;
+    }
+
+    std::size_t hash() const noexcept {
+        constexpr int bits = sizeof(std::size_t) * 8 / 3; // 10 or 21
+        return static_cast<std::size_t>(lodIndex) << (2*bits)
+            | static_cast<std::size_t>(characterIndex) << bits
+            | static_cast<std::size_t>(meshIndex);
+    }
+
+    struct Hash {
+        std::size_t operator()(const MeshKey& key) const noexcept {
+            return key.hash();
+        }
+    };
 };
 
 /*
@@ -251,6 +293,11 @@ private:
 
     // the definition of each displayed entity in mesh display mode
     std::vector<MeshEntityData> _meshEntities;
+
+    // cache of reusable FileMeshAdapter instances for rigid meshes
+    std::unordered_map<
+        MeshKey, std::shared_ptr<FileMeshAdapter>, MeshKey::Hash>
+    _rigidMeshCache;
 };
 
 /*
@@ -850,12 +897,12 @@ void GolaemProcedural::PopulateCrowd(
                 size_t lodLevel;
 
                 entity.entityIndex = ientity;
-                entity.crowdFieldIndex = static_cast<short>(ifield);
+                entity.crowdFieldIndex = static_cast<uint32_t>(ifield);
                 entity.meshes = GenerateMeshes(
                     cachedSimulation, frame, ientity, motionBlur,
                     shutter, lodEnabled, cameraPos, globalPos,
                     &lodLevel);
-                entity.lodIndex = static_cast<short>(lodLevel);
+                entity.lodIndex = static_cast<uint32_t>(lodLevel);
 
                 const glm::GeometryAsset *asset =
                     character->getGeometryAsset(
@@ -1157,15 +1204,29 @@ GolaemProcedural::GenerateMeshes(
                 _args.materialPath.AppendElementString(matname);
         }
 
-        // construct a FileMeshInstance to generate Hydra data sources
-        // for the mesh and its material
+        // construct an instance of FileMeshAdapter to generate Hydra
+        // data sources for the mesh's topology and geometry; if the
+        // mesh is rigid, we can cache the FileMeshAdapter and reuse
+        // it for all instances of the same mesh
 
-        std::shared_ptr<FileMeshAdapter> adapter =
-            std::make_shared<FileMeshAdapter>(fileMesh);
+        std::shared_ptr<FileMeshAdapter> adapter;
+        bool isRigid = kEnableRigidEntities
+            && fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID;
 
-        bool isRigid = kEnableRigidEntities && adapter->IsRigid();
-
-        if (!isRigid) {
+        if (isRigid) {
+            MeshKey meshKey;
+            meshKey.characterIndex = characterIndex;
+            meshKey.lodIndex = static_cast<int32_t>(*lodLevel);
+            meshKey.meshIndex = meshXform._meshIndex;
+            auto it = _rigidMeshCache.find(meshKey);
+            if (it == _rigidMeshCache.end()) {
+                adapter = std::make_shared<FileMeshAdapter>(fileMesh);
+                _rigidMeshCache[meshKey] = adapter;
+            } else {
+                adapter = it->second;
+            }
+        } else {
+            adapter = std::make_shared<FileMeshAdapter>(fileMesh);
             if (motionBlur) {
                 adapter->SetGeometry(
                     shutterOffsets, outputData._deformedVertices,
@@ -1177,11 +1238,18 @@ GolaemProcedural::GenerateMeshes(
             }
         }
 
+        // construct a FileMeshInstance to add data sources for the
+        // mesh's material, custom primvars and xform (if it is rigid)
+
         std::shared_ptr<FileMeshInstance> instance =
             std::make_shared<FileMeshInstance>(
                 adapter, material, customPrimvars);
 
         if (isRigid) {
+
+            // TODO: this is wrong! I don't know how to calculate the
+            // mesh's transformation matrix correctly.
+
             auto boneIndex = meshXform._rigidSkinningBoneId;
             auto entityType = simData->_entityTypes[entityIndex];
             auto boneCount = simData->_boneCount[entityType];
@@ -1372,7 +1440,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
             // meshes beneath it
 
             std::snprintf(
-                buffer, sizeof(buffer), "c%de%dl%d",
+                buffer, sizeof(buffer), "c%ue%zul%u",
                 entity.crowdFieldIndex, entity.entityIndex,
                 entity.lodIndex);
             SdfPath groupPath = myPath.AppendChild(TfToken(buffer));
@@ -1397,7 +1465,9 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                         HdPrimvarsSchema::GetPointsLocator(),
                         HdPrimvarsSchema::GetNormalsLocator()
                     };
-                    if (entity.meshes[j]->IsRigid()) {
+                    bool isRigid = kEnableRigidEntities
+                        && entity.meshes[j]->IsRigid();
+                    if (isRigid) {
                         locators.append(
                             HdXformSchema::GetDefaultLocator());
                     }
