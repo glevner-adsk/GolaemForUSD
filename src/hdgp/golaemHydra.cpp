@@ -1,6 +1,7 @@
 #include <pxr/imaging/hdGp/generativeProceduralPlugin.h>
 #include <pxr/imaging/hdGp/generativeProceduralPluginRegistry.h>
 
+#include <pxr/imaging/hd/basisCurvesSchema.h>
 #include <pxr/imaging/hd/cameraSchema.h>
 #include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/materialBindingsSchema.h>
@@ -19,6 +20,7 @@
 #include <glmCrowdGcgCharacter.h>
 #include <glmCrowdIOUtils.h>
 #include <glmCrowdTerrainMesh.h>
+#include <glmFurCache.h>
 #include <glmGolaemCharacter.h>
 #include <glmIdsFilter.h>
 #include <glmSimulationCacheFactory.h>
@@ -27,6 +29,7 @@
 #include "glmUSD.h"
 #include "fileMeshAdapter.h"
 #include "fileMeshInstance.h"
+#include "furAdapter.h"
 
 #include <cmath>
 #include <iostream>
@@ -61,6 +64,7 @@ using glm::crowdio::SimulationCacheFactory;
 
 using glmhydra::FileMeshAdapter;
 using glmhydra::FileMeshInstance;
+using glmhydra::FurAdapter;
 
 TF_DEBUG_CODES(
     GLMHYDRA_TRACE,
@@ -88,6 +92,8 @@ TF_DEFINE_PRIVATE_TOKENS(
     (materialAssignMode)
     (enableMotionBlur)
     (enableLod)
+    (enableFur)
+    (furRenderPercent)
     (bbox)
     (mesh)
     (bySurfaceShader)
@@ -128,7 +134,9 @@ struct Args
           materialPath("Materials"),
           materialAssignMode(golaemTokens->byShadingGroup),
           enableMotionBlur(false),
-          enableLod(false)
+          enableLod(false),
+          enableFur(false),
+          furRenderPercent(100)
         {}
 
     VtTokenArray crowdFields;
@@ -147,6 +155,8 @@ struct Args
     TfToken materialAssignMode;
     bool enableMotionBlur;
     bool enableLod;
+    bool enableFur;
+    float furRenderPercent;
 };
 
 /*
@@ -168,6 +178,7 @@ struct MeshEntityData
     uint32_t crowdFieldIndex;
     uint32_t lodIndex;
     std::vector<std::shared_ptr<FileMeshInstance>> meshes;
+    std::vector<std::shared_ptr<FurAdapter>> fur;
     HdContainerDataSourceHandle extent;
 };
 
@@ -245,7 +256,8 @@ private:
     Args GetArgs(const HdSceneIndexBaseRefPtr& inputScene);
     void InitCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
-    std::vector<std::shared_ptr<FileMeshInstance>> GenerateMeshes(
+    void GenerateMeshesAndFur(
+        MeshEntityData& meshEntityData,
         CachedSimulation& cachedSimulation, double frame, int entityIndex,
         bool motionBlur, const GfVec2d& shutter,
         bool lodEnabled, const GfVec3d& cameraPos, const GfVec3d& entityPos,
@@ -273,7 +285,8 @@ private:
     _ChildIndexMap _childIndices;
 
     // in mesh display mode, maps the path of a Hydra prim to a pair of indices:
-    // an index into _meshEntities, and an index into that structure's meshes
+    // an index into _meshEntities, and an index into that structure's meshes or
+    // curves (fur)
     _ChildIndexPairMap _childIndexPairs;
 
     // the Golaem simulation cache factory
@@ -378,6 +391,10 @@ Args GolaemProcedural::GetArgs(const HdSceneIndexBaseRefPtr& inputScene)
         primvars, golaemTokens->enableMotionBlur, result.enableMotionBlur);
     GetTypedPrimvar(
         primvars, golaemTokens->enableLod, result.enableLod);
+    GetTypedPrimvar(
+        primvars, golaemTokens->enableFur, result.enableFur);
+    GetTypedPrimvar(
+        primvars, golaemTokens->furRenderPercent, result.furRenderPercent);
 
     // a primvar cannot be a relationship, so we convert the materialPath
     // argument (a token) to an SdfPath, which can be relative to the procedural
@@ -866,9 +883,9 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
 
                 entity.entityIndex = ientity;
                 entity.crowdFieldIndex = static_cast<uint32_t>(ifield);
-                entity.meshes = GenerateMeshes(
-                    cachedSimulation, frame, ientity, motionBlur, shutter,
-                    lodEnabled, cameraPos, globalPos, &lodLevel);
+                GenerateMeshesAndFur(
+                    entity, cachedSimulation, frame, ientity, motionBlur,
+                    shutter, lodEnabled, cameraPos, globalPos, &lodLevel);
                 entity.lodIndex = static_cast<uint32_t>(lodLevel);
 
                 const glm::GeometryAsset *asset = character->getGeometryAsset(
@@ -993,17 +1010,16 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 }
 
 /*
- * Generates and returns a FileMeshInstance for each mesh constituting the given
- * entity at the given frame.
+ * Generates meshes and/or fur curves for the given entity at the given frame.
+ * Meshes are added to the MeshEntityData's meshes vector; curves are added to
+ * its fur vector.
  */
-std::vector<std::shared_ptr<FileMeshInstance>>
-GolaemProcedural::GenerateMeshes(
+void GolaemProcedural::GenerateMeshesAndFur(
+    MeshEntityData& meshEntityData,
     CachedSimulation& cachedSimulation, double frame, int entityIndex,
     bool motionBlur, const GfVec2d& shutter, bool lodEnabled,
     const GfVec3d& cameraPos, const GfVec3d& entityPos, size_t *lodLevel)
 {
-    std::vector<std::shared_ptr<FileMeshInstance>> instances;
-
     // fetch simulation data, frame data and assets, then call
     // glmPrepareEntityGeometry() to generate information about this entity at
     // this frame
@@ -1031,6 +1047,7 @@ GolaemProcedural::GenerateMeshes(
     inputData._dirMapRules = _dirmapRules;
     inputData._geometryTag = static_cast<short>(_args.geometryTag);
     inputData._enableLOD = lodEnabled;
+    inputData._generateFur = _args.enableFur;
 
     glm::Vector3 glmCamPos, glmEntPos;
 
@@ -1084,12 +1101,12 @@ GolaemProcedural::GenerateMeshes(
     if (geoStatus != glm::crowdio::GIO_SUCCESS) {
         std::cerr << "glmPrepareEntityGeometry() returned error: "
                   << glmConvertGeometryGenerationStatus(geoStatus) << '\n';
-        return instances;
+        return;
     }
 
     if (outputData._geoType != glm::crowdio::GeometryType::GCG) {
         std::cerr << "geometry type is not GCG, ignoring\n";
-        return instances;
+        return;
     }
 
     if (lodEnabled) {
@@ -1112,7 +1129,7 @@ GolaemProcedural::GenerateMeshes(
     CrowdGcgCharacter *gcgCharacter = outputData._gcgCharacters[0];
     const GlmGeometryFile& geoFile = gcgCharacter->getGeometry();
     size_t meshCount = outputData._meshAssetNameIndices.size();
-    instances.reserve(meshCount);
+    meshEntityData.meshes.reserve(meshCount);
 
     for (size_t imesh = 0; imesh < meshCount; ++imesh) {
 
@@ -1216,10 +1233,26 @@ GolaemProcedural::GenerateMeshes(
                 simData->_scales[entityIndex]);
         }
 
-        instances.emplace_back(instance);
+        meshEntityData.meshes.emplace_back(instance);
     }
 
-    return instances;
+    // fur
+
+    if (_args.enableFur && !outputData._furIdsArray.empty()) {
+        size_t nfur = outputData._furIdsArray.size();
+        meshEntityData.fur.reserve(nfur);
+
+        for (size_t ifur = 0; ifur < nfur; ++ifur) {
+            const glm::crowdio::FurIds& furids = outputData._furIdsArray[ifur];
+            std::shared_ptr<FurAdapter> furAdapter =
+                std::make_shared<FurAdapter>(
+                    outputData._furCacheArray[furids._furCacheIdx],
+                    furids._meshInFurIdx, simData->_scales[entityIndex],
+                    _args.furRenderPercent);
+            furAdapter->SetGeometry(outputData._deformedFurVertices[0][ifur]);
+            meshEntityData.fur.emplace_back(furAdapter);
+        }
+    }
 }
 
 /*
@@ -1422,6 +1455,20 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                     outputDirtiedPrims->emplace_back(childPath, locators);
                 }
             }
+
+            // and a child node for each fur cache
+
+            for (size_t j = 0; j < entity.fur.size(); ++j) {
+                std::snprintf(buffer, sizeof(buffer), "f%zu", j);
+                SdfPath childPath = groupPath.AppendChild(TfToken(buffer));
+                result[childPath] = HdPrimTypeTokens->basisCurves;
+                _childIndexPairs[childPath] = {i, j};
+
+                if (previousResult.size() > 0) {
+                    outputDirtiedPrims->emplace_back(
+                        childPath, HdPrimvarsSchema::GetPointsLocator());
+                }
+            }
         }
     }
 
@@ -1473,24 +1520,25 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         }
 
         size_t entityIndex = it->second.first;
-        size_t meshIndex = it->second.second;
+        size_t subIndex = it->second.second;
         const MeshEntityData& meshEntity = _meshEntities[entityIndex];
 
-        // the entity group node supplies the extent
+        // the entity group node supplies the extent for all the meshes and/or
+        // curves beneath it, but note that each mesh and curve must supply its
+        // own xform, otherwise RenderMan refuses to render it!
 
-        if (meshIndex == std::numeric_limits<size_t>::max()) {
+        if (subIndex == std::numeric_limits<size_t>::max()) {
             result.primType = TfToken();
             result.dataSource = HdRetainedContainerDataSource::New(
                 HdExtentSchemaTokens->extent,
                 meshEntity.extent);
         }
 
-        // child nodes supply the xform, mesh and material bindings (note that
-        // RenderMan refuses to render a mesh that does not provide an xform!)
+        // mesh nodes
 
-        else {
+        else if (childPrimPath.GetName()[0] == 'm') {
             const std::shared_ptr<FileMeshInstance>& instance =
-                meshEntity.meshes[meshIndex];
+                meshEntity.meshes[subIndex];
 
             result.primType = HdPrimTypeTokens->mesh;
             result.dataSource = HdRetainedContainerDataSource::New(
@@ -1502,6 +1550,22 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
                 instance->GetPrimvarsDataSource(),
                 HdMaterialBindingsSchemaTokens->materialBindings,
                 instance->GetMaterialDataSource());
+        }
+
+        // curve nodes for fur
+
+        else {
+            const std::shared_ptr<FurAdapter>& instance =
+                meshEntity.fur[subIndex];
+
+            result.primType = HdPrimTypeTokens->basisCurves;
+            result.dataSource = HdRetainedContainerDataSource::New(
+                HdXformSchemaTokens->xform,
+                instance->GetXformDataSource(),
+                HdBasisCurvesSchemaTokens->basisCurves,
+                instance->GetCurveDataSource(),
+                HdPrimvarsSchemaTokens->primvars,
+                instance->GetPrimvarsDataSource());
         }
     }
 
