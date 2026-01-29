@@ -2,7 +2,9 @@
 
 #include <pxr/imaging/hd/containerDataSourceEditor.h>
 #include <pxr/imaging/hd/materialBindingsSchema.h>
+#include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/primvarSchema.h>
+#include <pxr/imaging/hd/primvarsSchema.h>
 #include <pxr/imaging/hd/xformSchema.h>
 #include <pxr/base/gf/quatd.h>
 
@@ -80,6 +82,19 @@ FileMeshInstance::GetMaterialDataSource() const
         HdMaterialBindingSchema::Builder()
         .SetPath(HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
         .Build());
+}
+
+HdContainerDataSourceHandle FileMeshInstance::GetDataSource() const
+{
+    return HdRetainedContainerDataSource::New(
+        HdXformSchemaTokens->xform,
+        _xform,
+        HdMeshSchemaTokens->mesh,
+        _adapter->GetMeshDataSource(),
+        HdPrimvarsSchemaTokens->primvars,
+        GetPrimvarsDataSource(),
+        HdMaterialBindingsSchemaTokens->materialBindings,
+        GetMaterialDataSource());
 }
 
 }  // namespace glmhydra

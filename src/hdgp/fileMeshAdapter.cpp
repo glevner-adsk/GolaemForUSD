@@ -38,8 +38,6 @@ FileMeshAdapter::FileMeshAdapter(
       _uvMode(glm::crowdio::GlmUVMode(fileMesh._uvMode)),
       _isRigid(fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID)
 {
-    // TODO: if rigid, check for a cached rigid mesh
-
     for (int i = 0; i < _vertexCounts.size(); ++i) {
         _vertexCounts[i] = fileMesh._polygonsVertexCount[i];
     }
@@ -90,8 +88,6 @@ FileMeshAdapter::FileMeshAdapter(
         _normals.assign(1, std::move(n));
 
         _shutterOffsets.assign(1, 0);
-
-        // TODO: cache topology, geometry and UVs
     }
 }
 

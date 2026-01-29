@@ -4,7 +4,6 @@
 #include <pxr/imaging/hd/basisCurvesSchema.h>
 #include <pxr/imaging/hd/cameraSchema.h>
 #include <pxr/imaging/hd/extentSchema.h>
-#include <pxr/imaging/hd/materialBindingsSchema.h>
 #include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/meshTopologySchema.h>
 #include <pxr/imaging/hd/primvarsSchema.h>
@@ -94,6 +93,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     (enableLod)
     (enableFur)
     (furRenderPercent)
+    (furRefineLevel)
     (bbox)
     (mesh)
     (bySurfaceShader)
@@ -136,7 +136,8 @@ struct Args
           enableMotionBlur(false),
           enableLod(false),
           enableFur(false),
-          furRenderPercent(100)
+          furRenderPercent(100),
+          furRefineLevel(0)
         {}
 
     VtTokenArray crowdFields;
@@ -157,6 +158,7 @@ struct Args
     bool enableLod;
     bool enableFur;
     float furRenderPercent;
+    int furRefineLevel;
 };
 
 /*
@@ -395,6 +397,8 @@ Args GolaemProcedural::GetArgs(const HdSceneIndexBaseRefPtr& inputScene)
         primvars, golaemTokens->enableFur, result.enableFur);
     GetTypedPrimvar(
         primvars, golaemTokens->furRenderPercent, result.furRenderPercent);
+    GetTypedPrimvar(
+        primvars, golaemTokens->furRefineLevel, result.furRefineLevel);
 
     // a primvar cannot be a relationship, so we convert the materialPath
     // argument (a token) to an SdfPath, which can be relative to the procedural
@@ -1248,7 +1252,7 @@ void GolaemProcedural::GenerateMeshesAndFur(
                 std::make_shared<FurAdapter>(
                     outputData._furCacheArray[furids._furCacheIdx],
                     furids._meshInFurIdx, simData->_scales[entityIndex],
-                    _args.furRenderPercent);
+                    _args.furRenderPercent, _args.furRefineLevel);
             furAdapter->SetGeometry(outputData._deformedFurVertices[0][ifur]);
             meshEntityData.fur.emplace_back(furAdapter);
         }
@@ -1541,15 +1545,7 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
                 meshEntity.meshes[subIndex];
 
             result.primType = HdPrimTypeTokens->mesh;
-            result.dataSource = HdRetainedContainerDataSource::New(
-                HdXformSchemaTokens->xform,
-                instance->GetXformDataSource(),
-                HdMeshSchemaTokens->mesh,
-                instance->GetMeshDataSource(),
-                HdPrimvarsSchemaTokens->primvars,
-                instance->GetPrimvarsDataSource(),
-                HdMaterialBindingsSchemaTokens->materialBindings,
-                instance->GetMaterialDataSource());
+            result.dataSource = instance->GetDataSource();
         }
 
         // curve nodes for fur
@@ -1559,13 +1555,7 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
                 meshEntity.fur[subIndex];
 
             result.primType = HdPrimTypeTokens->basisCurves;
-            result.dataSource = HdRetainedContainerDataSource::New(
-                HdXformSchemaTokens->xform,
-                instance->GetXformDataSource(),
-                HdBasisCurvesSchemaTokens->basisCurves,
-                instance->GetCurveDataSource(),
-                HdPrimvarsSchemaTokens->primvars,
-                instance->GetPrimvarsDataSource());
+            result.dataSource = instance->GetDataSource();
         }
     }
 

@@ -32,22 +32,16 @@ public:
 
     // TODO: variant of SetTransform() with shutter offsets
 
-    HdContainerDataSourceHandle GetPrimvarsDataSource() const;
-    HdContainerDataSourceHandle GetMaterialDataSource() const;
-
-    HdContainerDataSourceHandle GetXformDataSource() const {
-        return _xform;
-    }
-
-    HdContainerDataSourceHandle GetMeshDataSource() const {
-        return _adapter->GetMeshDataSource();
-    }
+    HdContainerDataSourceHandle GetDataSource() const;
 
     bool IsRigid() const {
         return _adapter->IsRigid();
     }
 
 private:
+    HdContainerDataSourceHandle GetPrimvarsDataSource() const;
+    HdContainerDataSourceHandle GetMaterialDataSource() const;
+
     std::shared_ptr<FileMeshAdapter> _adapter;
     SdfPath _material;
     const PrimvarDSMapRef _customPrimvars;
