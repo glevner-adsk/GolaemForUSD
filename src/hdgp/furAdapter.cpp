@@ -3,6 +3,7 @@
 #include <pxr/imaging/hd/basisCurvesSchema.h>
 #include <pxr/imaging/hd/basisCurvesTopologySchema.h>
 #include <pxr/imaging/hd/legacyDisplayStyleSchema.h>
+#include <pxr/imaging/hd/materialBindingsSchema.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/primvarsSchema.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
@@ -31,10 +32,11 @@ namespace glmhydra {
  */
 FurAdapter::FurAdapter(
     FurCache::SP furCachePtr, size_t meshInFurIndex, float scale,
-    float renderPercent, int refineLevel)
+    const SdfPath& material, float renderPercent, int refineLevel)
     : _furCachePtr(furCachePtr),
       _meshInFurIndex(meshInFurIndex),
       _curveIncr(std::lround(100.0f / renderPercent)),
+      _material(material),
       _refineLevel(refineLevel),
       _curveDegree(UsdGeomTokens->cubic)
 {
@@ -82,6 +84,15 @@ FurAdapter::FurAdapter(
     if (hasUVs) {
         _uvs.reserve(totalVertexCount);
     }
+
+    /*
+    for (size_t i = 0; i < firstGroup._floatPropertiesNames.size(); ++i) {
+        std::cout << "float property: " << firstGroup._floatPropertiesNames[i] << '\n';
+    }
+    for (size_t i = 0; i < firstGroup._vector3PropertiesNames.size(); ++i) {
+        std::cout << "vector3 property: " << firstGroup._vector3PropertiesNames[i] << '\n';
+    }
+    */
 
     // fill in vertex counts, indices, widths, etc.
 
@@ -133,33 +144,30 @@ FurAdapter::FurAdapter(
 void FurAdapter::SetGeometry(const glm::Array<glm::Vector3>& deformedVertices)
 {
     const FurCache& furCache = *_furCachePtr;
-    size_t groupCount = furCache._curveGroups.size();
-    size_t deformedIndex = 0;
+    size_t inputIndex = 0;
 
     _vertices.clear();
 
-    for (size_t igroup = 0; igroup < groupCount; ++igroup) {
-        const FurCurveGroup& group = furCache._curveGroups[igroup];
+    for (const FurCurveGroup& group: furCache._curveGroups) {
         size_t ncurve = group._numVertices.size();
         for (size_t icurve = 0; icurve < ncurve; icurve += _curveIncr) {
             size_t nvert = group._numVertices[icurve];
             if (group._supportMeshId == _meshInFurIndex) {
                 for (size_t ivert = 0; ivert < nvert; ++ivert) {
-                    if (deformedIndex + ivert >= deformedVertices.size()) {
-                        std::cerr << "FurAdapter: too many fur vertices\n";
-                        return;
+                    if (inputIndex + ivert >= deformedVertices.size()) {
+                        break;
                     }
                     _vertices.emplace_back(
-                        deformedVertices[deformedIndex + ivert].getFloatValues());
+                        deformedVertices[inputIndex + ivert].getFloatValues());
                 }
             }
-            deformedIndex += nvert;
+            inputIndex += nvert;
         }
     }
 
     if (_vertices.size() != _vertexIndices.size()) {
         std::cerr << "FurAdapter: expected " << _vertexIndices.size()
-                  << " hairs, got " << _vertices.size() << '\n';
+                  << " fur vertices, got " << _vertices.size() << '\n';
     }
 }
 
@@ -239,6 +247,15 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
         dataNames.size(), dataNames.cdata(), dataSources.cdata());
 }
 
+HdContainerDataSourceHandle FurAdapter::GetMaterialDataSource() const
+{
+    return HdRetainedContainerDataSource::New(
+        HdMaterialBindingsSchemaTokens->allPurpose,
+        HdMaterialBindingSchema::Builder()
+        .SetPath(HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
+        .Build());
+}
+
 HdContainerDataSourceHandle FurAdapter::GetDisplayStyleDataSource() const
 {
     return HdLegacyDisplayStyleSchema::Builder()
@@ -251,8 +268,8 @@ HdContainerDataSourceHandle FurAdapter::GetDataSource() const
     VtTokenArray dataNames;
     VtArray<HdDataSourceBaseHandle> dataSources;
 
-    dataNames.reserve(4);
-    dataSources.reserve(4);
+    dataNames.reserve(6);
+    dataSources.reserve(6);
 
     dataNames.push_back(HdXformSchemaTokens->xform);
     dataSources.push_back(GetXformDataSource());
@@ -262,6 +279,11 @@ HdContainerDataSourceHandle FurAdapter::GetDataSource() const
 
     dataNames.push_back(HdPrimvarsSchemaTokens->primvars);
     dataSources.push_back(GetPrimvarsDataSource());
+
+    if (!_material.IsEmpty()) {
+        dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
+        dataSources.push_back(GetMaterialDataSource());
+    }
 
     if (!_widths.empty()) {
         dataNames.push_back(HdLegacyDisplayStyleSchemaTokens->displayStyle);

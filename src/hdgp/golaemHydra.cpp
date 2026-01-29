@@ -268,6 +268,8 @@ private:
         const GlmSimulationData *simData, const GlmFrameData *frameData,
         const ShaderAssetDataContainer *shaderData,
         const GolaemCharacter *character, int entityIndex) const;
+    SdfPath FindMaterialForShadingGroup(
+        const GolaemCharacter *character, int shGroupIndex) const;
 
     using _ChildIndexMap = std::unordered_map<SdfPath, size_t, TfHash>;
     using _ChildIndexPairMap =
@@ -1014,6 +1016,44 @@ PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
 }
 
 /*
+ * Returns the absolute SdfPath of the material for the given shading group in
+ * the given character. Returns an empty path if the material assign mode is
+ * "none" or if the shading group index is negative.
+ */
+SdfPath GolaemProcedural::FindMaterialForShadingGroup(
+    const GolaemCharacter *character, int shGroupIndex) const
+{
+    if (_args.materialAssignMode == golaemTokens->none || shGroupIndex < 0) {
+        return SdfPath();
+    }
+
+    const glm::ShadingGroup& shGroup = character->_shadingGroups[shGroupIndex];
+    std::string matname;
+
+    // assign material by shading group
+
+    if (_args.materialAssignMode == golaemTokens->byShadingGroup) {
+        const GlmString& glmname = shGroup._name;
+        matname.assign(glmname.c_str(), glmname.size());
+    }
+
+    // assign material by surface shader
+
+    else {
+        int shAssetIndex = character->findShaderAsset(shGroup, "surface");
+        if (shAssetIndex >= 0) {
+            const GlmString& glmname =
+                character->_shaderAssets[shAssetIndex]._name;
+            matname.assign(glmname.c_str(), glmname.size());
+        } else {
+            matname = "DefaultGolaemMat";
+        }
+    }
+
+    return _args.materialPath.AppendElementString(matname);
+}
+
+/*
  * Generates meshes and/or fur curves for the given entity at the given frame.
  * Meshes are added to the MeshEntityData's meshes vector; curves are added to
  * its fur vector.
@@ -1143,40 +1183,10 @@ void GolaemProcedural::GenerateMeshesAndFur(
             geoFile._transforms[outputData._transformIndicesInGcgFile[imesh]];
         const GlmFileMesh& fileMesh = geoFile._meshes[meshXform._meshIndex];
 
-        // append the name of its material to the material path
+        // find the material for the mesh's shading group
 
-        SdfPath material;
-        int shGroupIndex = outputData._meshShadingGroups[imesh];
-
-        if (_args.materialAssignMode != golaemTokens->none
-            && shGroupIndex >= 0) {
-            const glm::ShadingGroup& shGroup =
-                inputData._character->_shadingGroups[shGroupIndex];
-            std::string matname;
-
-            // assign material by shading group
-
-            if (_args.materialAssignMode == golaemTokens->byShadingGroup) {
-                const GlmString& glmname = shGroup._name;
-                matname.assign(glmname.c_str(), glmname.size());
-            }
-
-            // assign material by surface shader
-
-            else {
-                int shAssetIndex =
-                    character->findShaderAsset(shGroup, "surface");
-                if (shAssetIndex >= 0) {
-                    const GlmString& glmname =
-                        character->_shaderAssets[shAssetIndex]._name;
-                    matname.assign(glmname.c_str(), glmname.size());
-                } else {
-                    matname = "DefaultGolaemMat";
-                }
-            }
-
-            material = _args.materialPath.AppendElementString(matname);
-        }
+        SdfPath material = FindMaterialForShadingGroup(
+            inputData._character, outputData._meshShadingGroups[imesh]);
 
         // construct an instance of FileMeshAdapter to generate Hydra data
         // sources for the mesh's topology and geometry; if the mesh is rigid,
@@ -1247,12 +1257,17 @@ void GolaemProcedural::GenerateMeshesAndFur(
         meshEntityData.fur.reserve(nfur);
 
         for (size_t ifur = 0; ifur < nfur; ++ifur) {
+            SdfPath furmat = FindMaterialForShadingGroup(
+                inputData._character, outputData._furShadingGroups[ifur]);
+
             const glm::crowdio::FurIds& furids = outputData._furIdsArray[ifur];
+
             std::shared_ptr<FurAdapter> furAdapter =
                 std::make_shared<FurAdapter>(
                     outputData._furCacheArray[furids._furCacheIdx],
-                    furids._meshInFurIdx, simData->_scales[entityIndex],
+                    furids._meshInFurIdx, simData->_scales[entityIndex], furmat,
                     _args.furRenderPercent, _args.furRefineLevel);
+
             furAdapter->SetGeometry(outputData._deformedFurVertices[0][ifur]);
             meshEntityData.fur.emplace_back(furAdapter);
         }

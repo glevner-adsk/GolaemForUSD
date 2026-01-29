@@ -70,13 +70,8 @@ FileMeshInstance::GetPrimvarsDataSource() const
     return editor.Finish();
 }
 
-HdContainerDataSourceHandle
-FileMeshInstance::GetMaterialDataSource() const
+HdContainerDataSourceHandle FileMeshInstance::GetMaterialDataSource() const
 {
-    if (_material.IsEmpty()) {
-        return HdContainerDataSourceHandle();
-    }
-
     return HdRetainedContainerDataSource::New(
         HdMaterialBindingsSchemaTokens->allPurpose,
         HdMaterialBindingSchema::Builder()
@@ -86,15 +81,28 @@ FileMeshInstance::GetMaterialDataSource() const
 
 HdContainerDataSourceHandle FileMeshInstance::GetDataSource() const
 {
+    VtTokenArray dataNames;
+    VtArray<HdDataSourceBaseHandle> dataSources;
+
+    dataNames.reserve(4);
+    dataSources.reserve(4);
+
+    dataNames.push_back(HdXformSchemaTokens->xform);
+    dataSources.push_back(_xform);
+
+    dataNames.push_back(HdMeshSchemaTokens->mesh);
+    dataSources.push_back(_adapter->GetMeshDataSource());
+
+    dataNames.push_back(HdPrimvarsSchemaTokens->primvars);
+    dataSources.push_back(GetPrimvarsDataSource());
+
+    if (!_material.IsEmpty()) {
+        dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
+        dataSources.push_back(GetMaterialDataSource());
+    }
+
     return HdRetainedContainerDataSource::New(
-        HdXformSchemaTokens->xform,
-        _xform,
-        HdMeshSchemaTokens->mesh,
-        _adapter->GetMeshDataSource(),
-        HdPrimvarsSchemaTokens->primvars,
-        GetPrimvarsDataSource(),
-        HdMaterialBindingsSchemaTokens->materialBindings,
-        GetMaterialDataSource());
+        dataNames.size(), dataNames.cdata(), dataSources.cdata());
 }
 
 }  // namespace glmhydra

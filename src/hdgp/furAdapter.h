@@ -5,6 +5,7 @@
 #include <glmVector3.h>
 
 #include <pxr/imaging/hd/dataSource.h>
+#include <pxr/usd/sdf/path.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/vt/array.h>
 
@@ -21,7 +22,8 @@ class FurAdapter
 public:
     FurAdapter(
         glm::crowdio::FurCache::SP furCachePtr, size_t meshInFurIndex,
-        float scale, float renderPercent = 100.0f, int refineLevel = 0);
+        float scale, const SdfPath& material, float renderPercent = 100.0f,
+        int refineLevel = 0);
 
     void SetGeometry(const glm::Array<glm::Vector3>& deformedVertices);
 
@@ -33,11 +35,13 @@ private:
     HdContainerDataSourceHandle GetXformDataSource() const;
     HdContainerDataSourceHandle GetCurveDataSource() const;
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
+    HdContainerDataSourceHandle GetMaterialDataSource() const;
     HdContainerDataSourceHandle GetDisplayStyleDataSource() const;
 
     glm::crowdio::FurCache::SP _furCachePtr;
     size_t _meshInFurIndex;
     int _curveIncr;
+    SdfPath _material;
     int _refineLevel;
     VtIntArray _vertexCounts;
     VtIntArray _vertexIndices;
