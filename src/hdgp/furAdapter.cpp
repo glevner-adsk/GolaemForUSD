@@ -12,7 +12,6 @@
 
 #include <cmath>
 #include <iostream>
-#include <memory>
 
 using glm::crowdio::FurCache;
 using glm::crowdio::FurCurveGroup;
@@ -62,6 +61,10 @@ FurAdapter::FurAdapter(
         return;
     }
 
+    _vertexCounts.reserve(totalCurveCount);
+    _vertexIndices.reserve(totalVertexCount);
+    _vertices.reserve(totalVertexCount);
+
     // some information is determined by the first curve group and is assumed to
     // be shared by all groups in the cache
 
@@ -76,37 +79,36 @@ FurAdapter::FurAdapter(
 
     // fill in vertex counts, indices, widths, etc.
 
-    _vertexCounts.reserve(totalCurveCount);
+    size_t outputIndex = 0;
 
-    for (size_t igroup = 0; igroup < groupCount; ++igroup) {
-        const FurCurveGroup& group = furCache._curveGroups[igroup];
-        if (group._supportMeshId == _meshInFurIndex) {
-            size_t ncurve = group._numVertices.size();
-            for (size_t icurve = 0; icurve < ncurve; icurve += _curveIncr) {
-                _vertexCounts.push_back(group._numVertices[icurve]);
+    for (const FurCurveGroup& group: furCache._curveGroups) {
+        if (group._supportMeshId != _meshInFurIndex) {
+            continue;
+        }
+
+        size_t inputIndex = 0;
+        size_t ncurve = group._numVertices.size();
+
+        for (size_t icurve = 0; icurve < ncurve; icurve += _curveIncr) {
+            size_t nvert = group._numVertices[icurve];
+            _vertexCounts.push_back(nvert);
+
+            for (size_t ivert = 0; ivert < nvert; ++ivert) {
+                _vertexIndices.push_back(static_cast<int>(outputIndex));
+
                 if (hasWidths) {
-                    size_t nvert = group._numVertices[icurve];
                     if (group._widths.empty()) {
-                        _widths.insert(_widths.end(), nvert, [](float *b, float *e) {
-                            std::uninitialized_fill(b, e, 0.0f);
-                        });
+                        _widths.push_back(0.0f);
                     } else {
-                        for (size_t ivert = 0; ivert < nvert; ++ivert) {
-                            _widths.push_back(scale * group._widths[ivert]);
-                        }
+                        _widths.push_back(scale * group._widths[inputIndex]);
                     }
                 }
+
+                ++inputIndex;
+                ++outputIndex;
             }
         }
     }
-
-    _vertexIndices.reserve(totalVertexCount);
-
-    for (size_t i = 0; i < totalVertexCount; ++i) {
-        _vertexIndices.push_back(static_cast<int>(i));
-    }
-
-    _vertices.reserve(totalVertexCount);
 }
 
 /*
