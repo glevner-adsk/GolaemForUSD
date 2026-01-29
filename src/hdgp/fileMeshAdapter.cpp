@@ -1,4 +1,5 @@
 #include "fileMeshAdapter.h"
+#include "hydraTools.h"
 
 #include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/meshTopologySchema.h>
@@ -193,9 +194,7 @@ FileMeshAdapter::GetPrimvarsDataSource() const
                 _shutterOffsets.size(),
                 const_cast<Time*>(_shutterOffsets.data()),
                 const_cast<VtVec3fArray*>(_vertices.data())))
-        .SetInterpolation(
-            HdPrimvarSchema::BuildInterpolationDataSource(
-                HdPrimvarSchemaTokens->vertex))
+        .SetInterpolation(tools::GetVertexInterpDataSource())
         .SetRole(
             HdPrimvarSchema::BuildRoleDataSource(
                 HdPrimvarSchemaTokens->point))
@@ -232,13 +231,10 @@ FileMeshAdapter::GetPrimvarsDataSource() const
 
         if (_normalMode ==
             glm::crowdio::GLM_NORMAL_PER_CONTROL_POINT) {
-            normalBuilder.SetInterpolation(
-                HdPrimvarSchema::BuildInterpolationDataSource(
-                    HdPrimvarSchemaTokens->vertex));
+            normalBuilder.SetInterpolation(tools::GetVertexInterpDataSource());
         } else {
             normalBuilder.SetInterpolation(
-                HdPrimvarSchema::BuildInterpolationDataSource(
-                    HdPrimvarSchemaTokens->faceVarying));
+                tools::GetFaceVaryingInterpDataSource());
         }
 
         normalBuilder.SetRole(
@@ -270,13 +266,9 @@ FileMeshAdapter::GetPrimvarsDataSource() const
 
         if (_uvMode ==
             glm::crowdio::GLM_UV_PER_CONTROL_POINT) {
-            uvBuilder.SetInterpolation(
-                HdPrimvarSchema::BuildInterpolationDataSource(
-                    HdPrimvarSchemaTokens->vertex));
+            uvBuilder.SetInterpolation(tools::GetVertexInterpDataSource());
         } else {
-            uvBuilder.SetInterpolation(
-                HdPrimvarSchema::BuildInterpolationDataSource(
-                    HdPrimvarSchemaTokens->faceVarying));
+            uvBuilder.SetInterpolation(tools::GetFaceVaryingInterpDataSource());
         }
 
         uvBuilder.SetRole(

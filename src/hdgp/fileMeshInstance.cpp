@@ -10,25 +10,15 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
-static const HdContainerDataSourceHandle identityXform =
-    HdXformSchema::Builder()
-    .SetMatrix(
-        HdRetainedTypedSampledDataSource<GfMatrix4d>::New(GfMatrix4d(1.0)))
-    .Build();
-
-static const HdTokenDataSourceHandle constantInterp =
-    HdPrimvarSchema::BuildInterpolationDataSource(
-        HdPrimvarSchemaTokens->constant);
-
 namespace glmhydra {
 
 FileMeshInstance::FileMeshInstance(
     const std::shared_ptr<FileMeshAdapter>& adapter,
-    const SdfPath& material, const PrimvarDSMapRef& customPrimvars)
+    const SdfPath& material, const tools::PrimvarDSMapRef& customPrimvars)
     : _adapter(adapter),
       _material(material),
       _customPrimvars(customPrimvars),
-      _xform(identityXform)
+      _xform(tools::GetIdentityXformDataSource())
 {
 }
 
@@ -63,20 +53,11 @@ FileMeshInstance::GetPrimvarsDataSource() const
             HdDataSourceLocator(it.first),
             HdPrimvarSchema::Builder()
             .SetPrimvarValue(it.second)
-            .SetInterpolation(constantInterp)
+            .SetInterpolation(tools::GetConstantInterpDataSource())
             .Build());
     }
 
     return editor.Finish();
-}
-
-HdContainerDataSourceHandle FileMeshInstance::GetMaterialDataSource() const
-{
-    return HdRetainedContainerDataSource::New(
-        HdMaterialBindingsSchemaTokens->allPurpose,
-        HdMaterialBindingSchema::Builder()
-        .SetPath(HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
-        .Build());
 }
 
 HdContainerDataSourceHandle FileMeshInstance::GetDataSource() const
@@ -98,7 +79,7 @@ HdContainerDataSourceHandle FileMeshInstance::GetDataSource() const
 
     if (!_material.IsEmpty()) {
         dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
-        dataSources.push_back(GetMaterialDataSource());
+        dataSources.push_back(tools::GetMaterialDataSource(_material));
     }
 
     return HdRetainedContainerDataSource::New(

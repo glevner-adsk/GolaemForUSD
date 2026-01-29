@@ -32,11 +32,13 @@ namespace glmhydra {
  */
 FurAdapter::FurAdapter(
     FurCache::SP furCachePtr, size_t meshInFurIndex, float scale,
-    const SdfPath& material, float renderPercent, int refineLevel)
+    const SdfPath& material, const tools::PrimvarDSMapRef& customPrimvars,
+    float renderPercent, int refineLevel)
     : _furCachePtr(furCachePtr),
       _meshInFurIndex(meshInFurIndex),
       _curveIncr(std::lround(100.0f / renderPercent)),
       _material(material),
+      _customPrimvars(customPrimvars),
       _refineLevel(refineLevel),
       _curveDegree(UsdGeomTokens->cubic)
 {
@@ -84,15 +86,6 @@ FurAdapter::FurAdapter(
     if (hasUVs) {
         _uvs.reserve(totalVertexCount);
     }
-
-    /*
-    for (size_t i = 0; i < firstGroup._floatPropertiesNames.size(); ++i) {
-        std::cout << "float property: " << firstGroup._floatPropertiesNames[i] << '\n';
-    }
-    for (size_t i = 0; i < firstGroup._vector3PropertiesNames.size(); ++i) {
-        std::cout << "vector3 property: " << firstGroup._vector3PropertiesNames[i] << '\n';
-    }
-    */
 
     // fill in vertex counts, indices, widths, etc.
 
@@ -171,17 +164,6 @@ void FurAdapter::SetGeometry(const glm::Array<glm::Vector3>& deformedVertices)
     }
 }
 
-HdContainerDataSourceHandle FurAdapter::GetXformDataSource() const
-{
-    static const HdContainerDataSourceHandle identityXform =
-        HdXformSchema::Builder()
-        .SetMatrix(
-            HdRetainedTypedSampledDataSource<GfMatrix4d>::New(GfMatrix4d(1.0)))
-        .Build();
-
-    return identityXform;
-}
-
 HdContainerDataSourceHandle FurAdapter::GetCurveDataSource() const
 {
     return HdBasisCurvesSchema::Builder()
@@ -208,19 +190,29 @@ HdContainerDataSourceHandle FurAdapter::GetCurveDataSource() const
 
 HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
 {
+    const FurCache& furCache = *_furCachePtr;
+    const FurCurveGroup& firstGroup = furCache._curveGroups[0];
+    size_t floatPropCount = firstGroup._floatProperties.size();
+    size_t vector3PropCount = firstGroup._vector3Properties.size();
+
     VtTokenArray dataNames;
     VtArray<HdDataSourceBaseHandle> dataSources;
+    size_t capacity = 2 + floatPropCount + vector3PropCount;
 
-    dataNames.reserve(2);
-    dataSources.reserve(2);
+    if (_customPrimvars) {
+        capacity += _customPrimvars->size();
+    }
+
+    dataNames.reserve(capacity);
+    dataSources.reserve(capacity);
+
+    // vertices
 
     HdContainerDataSourceHandle vertexDataSource =
         HdPrimvarSchema::Builder()
         .SetPrimvarValue(
             HdRetainedTypedSampledDataSource<VtVec3fArray>::New(_vertices))
-        .SetInterpolation(
-            HdPrimvarSchema::BuildInterpolationDataSource(
-                HdPrimvarSchemaTokens->vertex))
+        .SetInterpolation(tools::GetVertexInterpDataSource())
         .SetRole(
             HdPrimvarSchema::BuildRoleDataSource(
                 HdPrimvarSchemaTokens->point))
@@ -229,31 +221,79 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
     dataNames.push_back(HdPrimvarsSchemaTokens->points);
     dataSources.push_back(vertexDataSource);
 
+    // width per vertex
+
     if (!_widths.empty()) {
         HdContainerDataSourceHandle widthDataSource =
             HdPrimvarSchema::Builder()
             .SetPrimvarValue(
                 HdRetainedTypedSampledDataSource<VtFloatArray>::New(_widths))
-            .SetInterpolation(
-                HdPrimvarSchema::BuildInterpolationDataSource(
-                    HdPrimvarSchemaTokens->vertex))
+            .SetInterpolation(tools::GetVertexInterpDataSource())
             .Build();
 
         dataNames.push_back(HdPrimvarsSchemaTokens->widths);
         dataSources.push_back(widthDataSource);
     }
 
+    // per-entity (constant) attributes
+
+    if (_customPrimvars) {
+        for (const auto& entry: *_customPrimvars) {
+            HdContainerDataSourceHandle dataSource =
+                HdPrimvarSchema::Builder()
+                .SetPrimvarValue(entry.second)
+                .SetInterpolation(tools::GetConstantInterpDataSource())
+                .Build();
+
+            dataNames.push_back(entry.first);
+            dataSources.push_back(dataSource);
+        }
+    }
+
+    // float properties per curve
+
+    for (size_t i = 0; i < floatPropCount; ++i) {
+        const glm::GlmString glmName = firstGroup._floatPropertiesNames[i];
+        const glm::Array<float>& glmValues = firstGroup._floatProperties[i];
+        VtFloatArray values(glmValues.begin(), glmValues.end());
+
+        HdContainerDataSourceHandle dataSource =
+            HdPrimvarSchema::Builder()
+            .SetPrimvarValue(
+                HdRetainedTypedSampledDataSource<VtFloatArray>::New(values))
+            .SetInterpolation(tools::GetUniformInterpDataSource())
+            .Build();
+
+        dataNames.push_back(TfToken(glmName.c_str()));
+        dataSources.push_back(dataSource);
+    }
+
+    // vector3 properties per curve
+
+    for (size_t i = 0; i < vector3PropCount; ++i) {
+        const glm::GlmString glmName = firstGroup._vector3PropertiesNames[i];
+        const glm::Array<glm::Vector3>& glmValues =
+            firstGroup._vector3Properties[i];
+
+        size_t sz = glmValues.size();
+        VtVec3fArray values(sz);
+        for (size_t j = 0; j < sz; ++j) {
+            values[j].Set(glmValues[j].getFloatValues());
+        }
+
+        HdContainerDataSourceHandle dataSource =
+            HdPrimvarSchema::Builder()
+            .SetPrimvarValue(
+                HdRetainedTypedSampledDataSource<VtVec3fArray>::New(values))
+            .SetInterpolation(tools::GetUniformInterpDataSource())
+            .Build();
+
+        dataNames.push_back(TfToken(glmName.c_str()));
+        dataSources.push_back(dataSource);
+    }
+
     return HdRetainedContainerDataSource::New(
         dataNames.size(), dataNames.cdata(), dataSources.cdata());
-}
-
-HdContainerDataSourceHandle FurAdapter::GetMaterialDataSource() const
-{
-    return HdRetainedContainerDataSource::New(
-        HdMaterialBindingsSchemaTokens->allPurpose,
-        HdMaterialBindingSchema::Builder()
-        .SetPath(HdRetainedTypedSampledDataSource<SdfPath>::New(_material))
-        .Build());
 }
 
 HdContainerDataSourceHandle FurAdapter::GetDisplayStyleDataSource() const
@@ -272,7 +312,7 @@ HdContainerDataSourceHandle FurAdapter::GetDataSource() const
     dataSources.reserve(6);
 
     dataNames.push_back(HdXformSchemaTokens->xform);
-    dataSources.push_back(GetXformDataSource());
+    dataSources.push_back(tools::GetIdentityXformDataSource());
 
     dataNames.push_back(HdBasisCurvesSchemaTokens->basisCurves);
     dataSources.push_back(GetCurveDataSource());
@@ -282,7 +322,7 @@ HdContainerDataSourceHandle FurAdapter::GetDataSource() const
 
     if (!_material.IsEmpty()) {
         dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
-        dataSources.push_back(GetMaterialDataSource());
+        dataSources.push_back(tools::GetMaterialDataSource(_material));
     }
 
     if (!_widths.empty()) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fileMeshAdapter.h"
+#include "hydraTools.h"
 
 #include <pxr/usd/sdf/path.h>
 #include <pxr/base/tf/denseHashMap.h>
@@ -20,13 +21,9 @@ PXR_NAMESPACE_USING_DIRECTIVE
 class FileMeshInstance
 {
 public:
-    using PrimvarDSMap =
-        TfDenseHashMap<TfToken, HdSampledDataSourceHandle, TfHash>;
-    using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
-
     FileMeshInstance(
         const std::shared_ptr<FileMeshAdapter>& adapter,
-        const SdfPath& material, const PrimvarDSMapRef& customPrimvars);
+        const SdfPath& material, const tools::PrimvarDSMapRef& customPrimvars);
 
     void SetTransform(const float pos[3], const float rot[4], float scale);
 
@@ -40,11 +37,10 @@ public:
 
 private:
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
-    HdContainerDataSourceHandle GetMaterialDataSource() const;
 
     std::shared_ptr<FileMeshAdapter> _adapter;
     SdfPath _material;
-    const PrimvarDSMapRef _customPrimvars;
+    const tools::PrimvarDSMapRef _customPrimvars;
     HdContainerDataSourceHandle _xform;
 };
 

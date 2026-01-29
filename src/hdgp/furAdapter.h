@@ -1,5 +1,7 @@
 #pragma once
 
+#include "hydraTools.h"
+
 #include <glmArray.h>
 #include <glmFurCache.h>
 #include <glmVector3.h>
@@ -22,8 +24,9 @@ class FurAdapter
 public:
     FurAdapter(
         glm::crowdio::FurCache::SP furCachePtr, size_t meshInFurIndex,
-        float scale, const SdfPath& material, float renderPercent = 100.0f,
-        int refineLevel = 0);
+        float scale, const SdfPath& material,
+        const tools::PrimvarDSMapRef& customPrimvars,
+        float renderPercent = 100.0f, int refineLevel = 0);
 
     void SetGeometry(const glm::Array<glm::Vector3>& deformedVertices);
 
@@ -32,7 +35,6 @@ public:
     HdContainerDataSourceHandle GetDataSource() const;
 
 private:
-    HdContainerDataSourceHandle GetXformDataSource() const;
     HdContainerDataSourceHandle GetCurveDataSource() const;
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
     HdContainerDataSourceHandle GetMaterialDataSource() const;
@@ -42,6 +44,7 @@ private:
     size_t _meshInFurIndex;
     int _curveIncr;
     SdfPath _material;
+    const tools::PrimvarDSMapRef _customPrimvars;
     int _refineLevel;
     VtIntArray _vertexCounts;
     VtIntArray _vertexIndices;

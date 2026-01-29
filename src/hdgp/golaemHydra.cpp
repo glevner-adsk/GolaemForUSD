@@ -29,6 +29,7 @@
 #include "fileMeshAdapter.h"
 #include "fileMeshInstance.h"
 #include "furAdapter.h"
+#include "hydratools.h"
 
 #include <cmath>
 #include <iostream>
@@ -707,13 +708,12 @@ HdContainerDataSourceHandle GetCubePrimvarsDataSource()
         HdRetainedContainerDataSource::New(
             HdPrimvarsSchemaTokens->points,
             HdPrimvarSchema::Builder()
-                .SetPrimvarValue(PointArrayDs::New(points))
-                .SetInterpolation(HdPrimvarSchema::
-                    BuildInterpolationDataSource(HdPrimvarSchemaTokens->vertex))
-                .SetRole(HdPrimvarSchema::
-                    BuildRoleDataSource(HdPrimvarSchemaTokens->point))
-                .Build()
-        );
+            .SetPrimvarValue(PointArrayDs::New(points))
+            .SetInterpolation(glmhydra::tools::GetVertexInterpDataSource())
+            .SetRole(HdPrimvarSchema::
+                     BuildRoleDataSource(HdPrimvarSchemaTokens->point))
+            .Build()
+            );
 
     return primvarsDs;
 }
@@ -1265,8 +1265,9 @@ void GolaemProcedural::GenerateMeshesAndFur(
             std::shared_ptr<FurAdapter> furAdapter =
                 std::make_shared<FurAdapter>(
                     outputData._furCacheArray[furids._furCacheIdx],
-                    furids._meshInFurIdx, simData->_scales[entityIndex], furmat,
-                    _args.furRenderPercent, _args.furRefineLevel);
+                    furids._meshInFurIdx, simData->_scales[entityIndex],
+                    furmat, customPrimvars, _args.furRenderPercent,
+                    _args.furRefineLevel);
 
             furAdapter->SetGeometry(outputData._deformedFurVertices[0][ifur]);
             meshEntityData.fur.emplace_back(furAdapter);
