@@ -72,9 +72,15 @@ FurAdapter::FurAdapter(
     if (firstGroup._curveDegrees == 1) {
         _curveDegree = UsdGeomTokens->linear;
     }
+
     bool hasWidths = !firstGroup._widths.empty();
     if (hasWidths) {
         _widths.reserve(totalVertexCount);
+    }
+
+    bool hasUVs = !firstGroup._uvs.empty();
+    if (hasUVs) {
+        _uvs.reserve(totalVertexCount);
     }
 
     // fill in vertex counts, indices, widths, etc.
@@ -91,7 +97,7 @@ FurAdapter::FurAdapter(
 
         for (size_t icurve = 0; icurve < ncurve; icurve += _curveIncr) {
             size_t nvert = group._numVertices[icurve];
-            _vertexCounts.push_back(nvert);
+            _vertexCounts.push_back(static_cast<int>(nvert));
 
             for (size_t ivert = 0; ivert < nvert; ++ivert) {
                 _vertexIndices.push_back(static_cast<int>(outputIndex));
@@ -101,6 +107,16 @@ FurAdapter::FurAdapter(
                         _widths.push_back(0.0f);
                     } else {
                         _widths.push_back(scale * group._widths[inputIndex]);
+                    }
+                }
+
+                if (hasUVs) {
+                    if (group._uvs.empty()) {
+                        _uvs.emplace_back(0.0f, 0.0f);
+                    } else {
+                        _uvs.emplace_back(
+                            group._uvs[inputIndex][0],
+                            group._uvs[inputIndex][1]);
                     }
                 }
 

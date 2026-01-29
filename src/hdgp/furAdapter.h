@@ -43,6 +43,7 @@ private:
     VtIntArray _vertexIndices;
     VtVec3fArray _vertices;
     VtFloatArray _widths;
+    VtVec2fArray _uvs;
     TfToken _curveDegree;
 };
 
