@@ -110,7 +110,7 @@ Instancing of Rigid Crowd Entities
 
 If a Golaem character contains a rigid mesh (no skinning or blend shapes),
 GolaemHydra can theoretically reuse a single instance of that mesh to save
-memory. For now, though, that feature is deactivated.
+memory. For now, though, that feature is disabled.
 
 
 GolaemHydra Attributes
@@ -151,6 +151,11 @@ A complete list of Golaem attributes follows, with their default values, if any.
     Contains the full path of the Golaem terrain file to which the current
     simulation is to be adapted. This is useful only if you load a layout file
     that uses it. See also `primvars:dirmap`.
+
+- primvars:enableLayout (bool: true)
+
+    If true, and if one or more layout files is given, those layout files are
+    applied to the Golaem cache. See also `primvars:layoutFiles`.
 
 - primvars:dirmap (token)
 
