@@ -1,5 +1,4 @@
 #include "fileMeshAdapter.h"
-#include "hydraTools.h"
 
 #include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/meshTopologySchema.h>
@@ -93,19 +92,6 @@ FileMeshAdapter::FileMeshAdapter(
 }
 
 /*
- * Copies a glm::Array of vectors to a VtArray, resizing it as needed.
- */
-static inline void CopyGlmArrayToVtArray(
-    VtVec3fArray& dst, const glm::Array<glm::Vector3>& src)
-{
-    size_t sz = src.size();
-    dst.resize(sz);
-    for (size_t i = 0; i < sz; ++i) {
-        dst[i].Set(src[i].getFloatValues());
-    }
-}
-
-/*
  * Sets the deformed vertices and normals for the current frame.
  */
 void FileMeshAdapter::SetGeometry(
@@ -121,8 +107,8 @@ void FileMeshAdapter::SetGeometry(
     _vertices.resize(1);
     _normals.resize(1);
 
-    CopyGlmArrayToVtArray(_vertices[0], deformedVertices);
-    CopyGlmArrayToVtArray(_normals[0], deformedNormals);
+    tools::CopyGlmVecArrayToVt(_vertices[0], deformedVertices);
+    tools::CopyGlmVecArrayToVt(_normals[0], deformedNormals);
 }
 
 /*
@@ -139,8 +125,8 @@ void FileMeshAdapter::SetGeometry(
  */
 void FileMeshAdapter::SetGeometry(
     const glm::Array<Time>& shutterOffsets,
-    const DeformedVectors& deformedVertices,
-    const DeformedVectors& deformedNormals,
+    const tools::DeformedVectors& deformedVertices,
+    const tools::DeformedVectors& deformedNormals,
     size_t meshIndex)
 {
     const size_t sampleCount = shutterOffsets.size();
@@ -156,9 +142,9 @@ void FileMeshAdapter::SetGeometry(
 
     for (size_t i = 0; i < sampleCount; ++i) {
         assert(deformedVertices[i][meshIndex].size() == _totalVertexCount);
-        CopyGlmArrayToVtArray(_vertices[i], deformedVertices[i][meshIndex]);
+        tools::CopyGlmVecArrayToVt(_vertices[i], deformedVertices[i][meshIndex]);
         assert(deformedNormals[i][meshIndex].size() == _totalNormalCount);
-        CopyGlmArrayToVtArray(_normals[i], deformedNormals[i][meshIndex]);
+        tools::CopyGlmVecArrayToVt(_normals[i], deformedNormals[i][meshIndex]);
     }
 }
 

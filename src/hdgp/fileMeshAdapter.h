@@ -1,5 +1,7 @@
 #pragma once
 
+#include "hydraTools.h"
+
 #include <pxr/imaging/hd/dataSource.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 
@@ -28,8 +30,6 @@ PXR_NAMESPACE_USING_DIRECTIVE
 class FileMeshAdapter
 {
 public:
-    using DeformedVectors = glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
-
     FileMeshAdapter(const glm::crowdio::GlmFileMesh& fileMesh);
 
     void SetGeometry(
@@ -38,8 +38,8 @@ public:
 
     void SetGeometry(
         const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
-        const DeformedVectors& deformedVertices,
-        const DeformedVectors& deformedNormals,
+        const tools::DeformedVectors& deformedVertices,
+        const tools::DeformedVectors& deformedNormals,
         size_t meshIndex);
 
     HdContainerDataSourceHandle GetMeshDataSource() const;

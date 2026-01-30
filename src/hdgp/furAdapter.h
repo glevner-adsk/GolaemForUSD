@@ -11,6 +11,8 @@
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/vt/array.h>
 
+#include <vector>
+
 namespace glmhydra {
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -30,11 +32,15 @@ public:
 
     void SetGeometry(const glm::Array<glm::Vector3>& deformedVertices);
 
-    // TODO: variant of SetGeometry() with shutter offsets
+    void SetGeometry(
+        const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
+        const tools::DeformedVectors& deformedVertices, size_t furIndex);
 
     HdContainerDataSourceHandle GetDataSource() const;
 
 private:
+    void CopyVertices(int shutterIndex, const glm::Array<glm::Vector3>& src);
+
     HdContainerDataSourceHandle GetCurveDataSource() const;
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
     HdContainerDataSourceHandle GetMaterialDataSource() const;
@@ -48,10 +54,11 @@ private:
     int _refineLevel;
     VtIntArray _vertexCounts;
     VtIntArray _vertexIndices;
-    VtVec3fArray _vertices;
+    std::vector<VtVec3fArray> _vertices;
     VtFloatArray _widths;
     VtVec2fArray _uvs;
     TfToken _curveDegree;
+    std::vector<HdSampledDataSource::Time> _shutterOffsets;
 };
 
 }  // namespace glmhydra

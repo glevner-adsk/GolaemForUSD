@@ -66,6 +66,9 @@ using glmhydra::FileMeshAdapter;
 using glmhydra::FileMeshInstance;
 using glmhydra::FurAdapter;
 
+using PrimvarDSMap = glmhydra::tools::PrimvarDSMap;
+using PrimvarDSMapRef = glmhydra::tools::PrimvarDSMapRef;
+
 TF_DEBUG_CODES(
     GLMHYDRA_TRACE,
     GLMHYDRA_DEPENDENCIES,
@@ -265,7 +268,7 @@ private:
         bool motionBlur, const GfVec2d& shutter,
         bool lodEnabled, const GfVec3d& cameraPos, const GfVec3d& entityPos,
         size_t *lodLevel);
-    PrimvarDataSourceMapRef GenerateCustomPrimvars(
+    PrimvarDSMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData, const GlmFrameData *frameData,
         const ShaderAssetDataContainer *shaderData,
         const GolaemCharacter *character, int entityIndex) const;
@@ -914,13 +917,12 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
  * Pass that hash map to each FileMeshInstance so that all of the mesh's
  * entities share them.
  */
-PrimvarDataSourceMapRef GolaemProcedural::GenerateCustomPrimvars(
+PrimvarDSMapRef GolaemProcedural::GenerateCustomPrimvars(
     const GlmSimulationData *simData, const GlmFrameData *frameData,
     const ShaderAssetDataContainer* shaderData,
     const GolaemCharacter *character, int entityIndex) const
 {
-    PrimvarDataSourceMapRef dataSources =
-        std::make_shared<PrimvarDataSourceMap>();
+    PrimvarDSMapRef dataSources = std::make_shared<PrimvarDSMap>();
 
     size_t shaderAttrCount = character->_shaderAttributes.size();
     size_t totalCount = shaderAttrCount
@@ -1165,7 +1167,7 @@ void GolaemProcedural::GenerateMeshesAndFur(
     const ShaderAssetDataContainer* shaderData =
         cachedSimulation.getFinalShaderData(frame, UINT32_MAX, true);
 
-    PrimvarDataSourceMapRef customPrimvars = GenerateCustomPrimvars(
+    PrimvarDSMapRef customPrimvars = GenerateCustomPrimvars(
         simData, frameData, shaderData, character, entityIndex);
 
     // fetch the corresponding character, geometry and mesh count
@@ -1269,7 +1271,14 @@ void GolaemProcedural::GenerateMeshesAndFur(
                     furmat, customPrimvars, _args.furRenderPercent,
                     _args.furRefineLevel);
 
-            furAdapter->SetGeometry(outputData._deformedFurVertices[0][ifur]);
+            if (motionBlur) {
+                furAdapter->SetGeometry(
+                    shutterOffsets, outputData._deformedFurVertices, ifur);
+            } else {
+                furAdapter->SetGeometry(
+                    outputData._deformedFurVertices[0][ifur]);
+            }
+
             meshEntityData.fur.emplace_back(furAdapter);
         }
     }

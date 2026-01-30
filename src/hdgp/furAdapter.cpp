@@ -14,6 +14,10 @@
 #include <cmath>
 #include <iostream>
 
+PXR_NAMESPACE_USING_DIRECTIVE
+
+using Time = HdSampledDataSource::Time;
+
 using glm::crowdio::FurCache;
 using glm::crowdio::FurCurveGroup;
 
@@ -67,7 +71,6 @@ FurAdapter::FurAdapter(
 
     _vertexCounts.reserve(totalCurveCount);
     _vertexIndices.reserve(totalVertexCount);
-    _vertices.reserve(totalVertexCount);
 
     // some information is determined by the first curve group and is assumed to
     // be shared by all groups in the cache
@@ -131,15 +134,15 @@ FurAdapter::FurAdapter(
     }
 }
 
-/*
- * Sets the deformed fur vertices for the current frame.
- */
-void FurAdapter::SetGeometry(const glm::Array<glm::Vector3>& deformedVertices)
+void FurAdapter::CopyVertices(
+    int shutterIndex, const glm::Array<glm::Vector3>& src)
 {
     const FurCache& furCache = *_furCachePtr;
     size_t inputIndex = 0;
 
-    _vertices.clear();
+    VtVec3fArray& dst = _vertices[shutterIndex];
+    dst.clear();
+    dst.reserve(_vertexIndices.size());
 
     for (const FurCurveGroup& group: furCache._curveGroups) {
         size_t ncurve = group._numVertices.size();
@@ -147,20 +150,54 @@ void FurAdapter::SetGeometry(const glm::Array<glm::Vector3>& deformedVertices)
             size_t nvert = group._numVertices[icurve];
             if (group._supportMeshId == _meshInFurIndex) {
                 for (size_t ivert = 0; ivert < nvert; ++ivert) {
-                    if (inputIndex + ivert >= deformedVertices.size()) {
+                    if (inputIndex + ivert >= src.size()) {
                         break;
                     }
-                    _vertices.emplace_back(
-                        deformedVertices[inputIndex + ivert].getFloatValues());
+                    dst.emplace_back(src[inputIndex + ivert].getFloatValues());
                 }
             }
             inputIndex += nvert;
         }
     }
 
-    if (_vertices.size() != _vertexIndices.size()) {
+    if (dst.size() != _vertexIndices.size()) {
         std::cerr << "FurAdapter: expected " << _vertexIndices.size()
-                  << " fur vertices, got " << _vertices.size() << '\n';
+                  << " fur vertices, got " << dst.size() << '\n';
+    }
+}
+
+/*
+ * Sets the deformed fur vertices for the current frame.
+ */
+void FurAdapter::SetGeometry(const glm::Array<glm::Vector3>& deformedVertices)
+{
+    _shutterOffsets.assign(1, 0);
+    _vertices.resize(1);
+    CopyVertices(0, deformedVertices);
+}
+
+/*
+ * Variation on SetGeometry() for motion blur. Specify any number of shutter
+ * offsets and the deformed vertices for each of those offsets.
+ *
+ * It is assumed that the shutter offsets are given in order! That is,
+ * HdRetainedTypedMultisampledDataSource makes that assumption.
+ *
+ * The DeformedVectors type corresponds to the vector arrays found in
+ * glm::crowdio::OutputEntityGeoData. The arrays have three dimensions --
+ * corresponding to the frame index, the fur index and the vector index -- so we
+ * need the fur index to access the vectors.
+ */
+void FurAdapter::SetGeometry(
+    const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
+    const tools::DeformedVectors& deformedVertices, size_t furIndex)
+{
+    const size_t sampleCount = shutterOffsets.size();
+    _shutterOffsets.assign(shutterOffsets.begin(), shutterOffsets.end());
+    _vertices.resize(sampleCount);
+
+    for (size_t i = 0; i < sampleCount; ++i) {
+        CopyVertices(i, deformedVertices[i][furIndex]);
     }
 }
 
@@ -211,7 +248,10 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
     HdContainerDataSourceHandle vertexDataSource =
         HdPrimvarSchema::Builder()
         .SetPrimvarValue(
-            HdRetainedTypedSampledDataSource<VtVec3fArray>::New(_vertices))
+            HdRetainedTypedMultisampledDataSource<VtVec3fArray>::New(
+                _shutterOffsets.size(),
+                const_cast<Time*>(_shutterOffsets.data()),
+                const_cast<VtVec3fArray*>(_vertices.data())))
         .SetInterpolation(tools::GetVertexInterpDataSource())
         .SetRole(
             HdPrimvarSchema::BuildRoleDataSource(

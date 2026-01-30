@@ -66,5 +66,18 @@ HdContainerDataSourceHandle GetMaterialDataSource(const SdfPath& material)
         .Build());
 }
 
+/*
+ * Copies a glm::Array of vectors to a VtArray, resizing it as needed.
+ */
+void CopyGlmVecArrayToVt(
+    VtVec3fArray& dst, const glm::Array<glm::Vector3>& src)
+{
+    size_t sz = src.size();
+    dst.resize(sz);
+    for (size_t i = 0; i < sz; ++i) {
+        dst[i].Set(src[i].getFloatValues());
+    }
+}
+
 }  // namespace tools
 }  // namespace glmhydra
