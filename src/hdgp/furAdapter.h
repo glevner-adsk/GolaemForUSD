@@ -39,7 +39,7 @@ public:
     HdContainerDataSourceHandle GetDataSource() const;
 
 private:
-    void CopyVertices(int shutterIndex, const glm::Array<glm::Vector3>& src);
+    void CopyVertices(size_t shutterIndex, const glm::Array<glm::Vector3>& src);
 
     HdContainerDataSourceHandle GetCurveDataSource() const;
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
@@ -51,6 +51,7 @@ private:
     int _curveIncr;
     SdfPath _material;
     const tools::PrimvarDSMapRef _customPrimvars;
+    tools::PrimvarDSMap _perCurvePrimvars;
     int _refineLevel;
     VtIntArray _vertexCounts;
     VtIntArray _vertexIndices;

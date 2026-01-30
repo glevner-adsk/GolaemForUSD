@@ -90,7 +90,7 @@ FurAdapter::FurAdapter(
         _uvs.reserve(totalVertexCount);
     }
 
-    // fill in vertex counts, indices, widths, etc.
+    // fill in vertex counts, indices, widths and UVs
 
     size_t outputIndex = 0;
 
@@ -132,10 +132,36 @@ FurAdapter::FurAdapter(
             }
         }
     }
+
+    // if the fur has per-curve properties, copy their values one time only
+
+    size_t floatPropCount = firstGroup._floatProperties.size();
+
+    for (size_t i = 0; i < floatPropCount; ++i) {
+        const glm::GlmString glmName = firstGroup._floatPropertiesNames[i];
+        const glm::Array<float>& glmValues = firstGroup._floatProperties[i];
+        VtFloatArray values(glmValues.begin(), glmValues.end());
+
+        _perCurvePrimvars[TfToken(glmName.c_str())] =
+            HdRetainedTypedSampledDataSource<VtFloatArray>::New(values);
+    }
+
+    size_t vector3PropCount = firstGroup._vector3Properties.size();
+
+    for (size_t i = 0; i < vector3PropCount; ++i) {
+        const glm::GlmString glmName = firstGroup._vector3PropertiesNames[i];
+        const glm::Array<glm::Vector3>& glmValues =
+            firstGroup._vector3Properties[i];
+        VtVec3fArray values;
+        tools::CopyGlmVecArrayToVt(values, glmValues);
+
+        _perCurvePrimvars[TfToken(glmName.c_str())] =
+            HdRetainedTypedSampledDataSource<VtVec3fArray>::New(values);
+    }
 }
 
 void FurAdapter::CopyVertices(
-    int shutterIndex, const glm::Array<glm::Vector3>& src)
+    size_t shutterIndex, const glm::Array<glm::Vector3>& src)
 {
     const FurCache& furCache = *_furCachePtr;
     size_t inputIndex = 0;
@@ -227,14 +253,9 @@ HdContainerDataSourceHandle FurAdapter::GetCurveDataSource() const
 
 HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
 {
-    const FurCache& furCache = *_furCachePtr;
-    const FurCurveGroup& firstGroup = furCache._curveGroups[0];
-    size_t floatPropCount = firstGroup._floatProperties.size();
-    size_t vector3PropCount = firstGroup._vector3Properties.size();
-
     VtTokenArray dataNames;
     VtArray<HdDataSourceBaseHandle> dataSources;
-    size_t capacity = 2 + floatPropCount + vector3PropCount;
+    size_t capacity = 2 + _perCurvePrimvars.size();
 
     if (_customPrimvars) {
         capacity += _customPrimvars->size();
@@ -290,45 +311,16 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
         }
     }
 
-    // float properties per curve
+    // per-curve (uniform) properties
 
-    for (size_t i = 0; i < floatPropCount; ++i) {
-        const glm::GlmString glmName = firstGroup._floatPropertiesNames[i];
-        const glm::Array<float>& glmValues = firstGroup._floatProperties[i];
-        VtFloatArray values(glmValues.begin(), glmValues.end());
-
+    for (const auto& entry: _perCurvePrimvars) {
         HdContainerDataSourceHandle dataSource =
             HdPrimvarSchema::Builder()
-            .SetPrimvarValue(
-                HdRetainedTypedSampledDataSource<VtFloatArray>::New(values))
+            .SetPrimvarValue(entry.second)
             .SetInterpolation(tools::GetUniformInterpDataSource())
             .Build();
 
-        dataNames.push_back(TfToken(glmName.c_str()));
-        dataSources.push_back(dataSource);
-    }
-
-    // vector3 properties per curve
-
-    for (size_t i = 0; i < vector3PropCount; ++i) {
-        const glm::GlmString glmName = firstGroup._vector3PropertiesNames[i];
-        const glm::Array<glm::Vector3>& glmValues =
-            firstGroup._vector3Properties[i];
-
-        size_t sz = glmValues.size();
-        VtVec3fArray values(sz);
-        for (size_t j = 0; j < sz; ++j) {
-            values[j].Set(glmValues[j].getFloatValues());
-        }
-
-        HdContainerDataSourceHandle dataSource =
-            HdPrimvarSchema::Builder()
-            .SetPrimvarValue(
-                HdRetainedTypedSampledDataSource<VtVec3fArray>::New(values))
-            .SetInterpolation(tools::GetUniformInterpDataSource())
-            .Build();
-
-        dataNames.push_back(TfToken(glmName.c_str()));
+        dataNames.push_back(entry.first);
         dataSources.push_back(dataSource);
     }
 
