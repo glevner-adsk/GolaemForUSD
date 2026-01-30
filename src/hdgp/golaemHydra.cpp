@@ -1252,15 +1252,22 @@ void GolaemProcedural::GenerateMeshesAndFur(
         meshEntityData.meshes.emplace_back(instance);
     }
 
-    // fur
+    // fur?
 
-    if (_args.enableFur && !outputData._furIdsArray.empty()) {
+    if (_args.enableFur) {
         size_t nfur = outputData._furIdsArray.size();
         meshEntityData.fur.reserve(nfur);
 
         for (size_t ifur = 0; ifur < nfur; ++ifur) {
+
+            // find the material for the fur's shading group
+
             SdfPath furmat = FindMaterialForShadingGroup(
                 inputData._character, outputData._furShadingGroups[ifur]);
+
+            // construct an instance of FurAdapter to generate Hydra data
+            // sources for the fur's topology, geometry, material and custom
+            // primvars
 
             const glm::crowdio::FurIds& furids = outputData._furIdsArray[ifur];
 
