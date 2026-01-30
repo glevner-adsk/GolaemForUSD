@@ -76,7 +76,7 @@ GolaemHydra supports motion blur, if the `primvars:enableMotionBlur` attribute
 is set to true, but it can be tricky to get the renderer to perform motion blur.
 
 GolaemHydra activates motion blur when a camera shutter interval is defined. It
-can be defined in one of two places: in the USD render settings, or by the
+can be defined in one of two places: in the Hydra render settings, or by the
 primary camera's `shutter:open` and `shutter:close` attributes. If the shutter
 interval is undefined, or if the open and close attributes are equal, motion
 blur is not activated.
@@ -97,10 +97,10 @@ If your Golaem cache contains fur elements, you can render them by setting the
 GolaemHydra prim's `primvars:enableFur` attribute to true.
 
 Two other attributes are useful for rendering fur. `primvars:furRenderPercent`
-allows you to render only some of the fur, e.g. 1% or 10%. And
+allows you to render only some of the fur, _e.g._ 1% or 10%. And
 `primvars:furRefineLevel` allows you to render fur curves with more detail.
 
-Note that, by default, the Storm render delegate ignores fur's widths, rendering
+Note that, by default, the Storm render delegate ignores fur widths, rendering
 curves as infinitely thin lines. To get Storm to render fur curves as ribbons,
 you must set `primvars:furRefineLevel` to 1 or more.
 
@@ -192,11 +192,12 @@ A complete list of Golaem attributes follows, with their default values, if any.
 
 - primvars:materialAssignMode (token: "byShadingGroup")
 
-    Determines how materials are assigned to meshes. If "byShadingGroup",
-    GolaemHydra looks for a material with the same name as the mesh's shading
-    group. If "bySurfaceShader", GolaemHydra looks for a surface shader asset
-    with the name of the mesh's shading group, then looks for a material whose
-    name is given by that asset. If "none", materials are not assigned at all.
+    Determines how materials are assigned to polygonal meshes and fur. If
+    "byShadingGroup", GolaemHydra looks for a material with the same name as the
+    mesh or fur's shading group. If "bySurfaceShader", GolaemHydra looks for a
+    surface shader asset with the name of the shading group, then looks for the
+    material whose name is given by that asset. If "none", materials are not
+    assigned at all.
 
 - primvars:enableMotionBlur (bool: false)
 
