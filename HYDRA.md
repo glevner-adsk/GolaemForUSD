@@ -52,8 +52,8 @@ It is a good idea to provide the prim's extent, because the plugin cannot set it
 by itself. The extent allows graphics applications to "frame" the prim, and it
 allows renderers to cull the prim if it is not visible.
 
-Note that if you parent a GolaemHydra prim to an xform, Hydra will ignore the
-xform's transformation.
+Note that you can parent a GolaemHydra prim to an xform, but Hydra ignores the
+transformations of the parent xform and of all its parents.
 
 
 Levels of Detail
@@ -118,46 +118,71 @@ GolaemHydra Attributes
 
 A complete list of Golaem attributes follows, with their default values, if any.
 
-- primvars:hdGp:proceduralType (token)
+| Attribute                    | Type  | Default Value    |
+| ---------------------------- | ----- | ---------------- |
+| primvars:hdGp:proceduralType | token |                  |
+| primvars:cacheDir            | token |                  |
+| primvars:cacheName           | token |                  |
+| primvars:characterFiles      | token |                  |
+| primvars:crowdFields         | token |                  |
+| primvars:layoutFiles         | token |                  |
+| primvars:terrainFile         | token |                  |
+| primvars:enableLayout        | bool  | true             |
+| primvars:dirmap              | token |                  |
+| primvars:displayMode         | token | "mesh"           |
+| primvars:entityIds           | token | "*"              |
+| primvars:renderPercent       | float | 100              |
+| primvars:geometryTag         | int   | 0                |
+| primvars:materialPath        | token | "Materials"      |
+| primvars:materialAssignMode  | token | "byShadingGroup" |
+| primvars:enableMotionBlur    | bool  | false            |
+| primvars:enableLod           | bool  | false            |
+| primvars:enableFur           | bool  | false            |
+| primvars:furRenderPercent    | float | 100              |
+| primvars:furRefineLevel      | int   | 0                |
+
+**Notes**
+
+- primvars:hdGp:proceduralType
 
     This *must* be set to "GolaemHydra".
 
-- primvars:crowdFields (token)
-
-    Contains one or more crowd field names, separated by semicolons.
-
-- primvars:cacheName (token)
-
-    Contains the name of the Golaem cache to be loaded.
-    
-- primvars:cacheDir (token)
+- primvars:cacheDir
 
     Contains the path of the directory where the Golaem cache can be found. See
     also `primvars:dirmap`.
 
-- primvars:characterFiles (token)
+- primvars:cacheName
+
+    Contains the name of the Golaem cache to be loaded.
+
+- primvars:characterFiles
 
     Contains the full paths of one or more Golaem character files to be loaded,
     separated by semicolons. See also `primvars:dirmap`.
 
-- primvars:layoutFiles (token)
+- primvars:crowdFields
+
+    Contains one or more crowd field names, separated by semicolons.
+
+- primvars:layoutFiles
 
     Contains the full paths of one or more Golaem layout files to be loaded,
     separated by semicolons. Layout files are ignored if `primvars:enableLayout`
     is false. See also `primvars:dirmap`.
 
-- primvars:terrainFile (token)
+- primvars:terrainFile
 
     Contains the full path of the Golaem terrain file to which the current
     simulation is to be adapted. This is useful only if you load a layout file
     that uses it. See also `primvars:dirmap`.
 
-- primvars:enableLayout (bool: true)
+- primvars:enableLayout
 
     If true, and if one or more layout files is given, those layout files are
     applied to the Golaem cache. See also `primvars:layoutFiles`.
 
-- primvars:dirmap (token)
+- primvars:dirmap
 
     Contains an even number of paths, separated by semicolons, used to adjust
     the paths of directories found in other attributes (`primvars:cacheDir`,
@@ -167,35 +192,41 @@ A complete list of Golaem attributes follows, with their default values, if any.
     "rule". If a directory given in another attribute begins with the first path
     in one of these rules, that part is replaced by the second path in the rule.
 
-- primvars:displayMode (token: "mesh")
+    For example:
+
+        "C:/Users/bill;/mnt/c/Users/bill"
+
+    might be used to map a Windows home directory to a Unix path.
+
+- primvars:displayMode
 
     If "mesh" (the default), characters are displayed as polygonal meshes; if
     "bbox", only their bounding boxes are displayed.
 
-- primvars:entityIds (token: "*")
+- primvars:entityIds
 
     Can be used to choose a subset of character instances (entities) to be
     displayed, by specifying their IDs. For example, "1000-10000" displays only
-    entities whose IDs are in the given range. The default ("*") is to display
-    all entities.
+    entities whose IDs are in the given range; "1001, 3001" displays only the
+    two given entities. The default ("*") is to display all entities.
 
-- primvars:renderPercent (float: 100)
+- primvars:renderPercent
 
     Specify a value greater than 0 but less than 100 to display only that
     percentage of the character instances.
 
-- primvars:geometryTag (int: 0)
+- primvars:geometryTag
 
     If Golaem characters define multiple geometries, this can be used to choose
     the one to be displayed.
 
-- primvars:materialPath (token: "Materials")
+- primvars:materialPath
 
     Contains the USD path of the prim where characters' materials are defined.
     The path can be relative to the GolaemHydra prim (like the default,
     "Materials") or absolute (beginning with a slash).
 
-- primvars:materialAssignMode (token: "byShadingGroup")
+- primvars:materialAssignMode
 
     Determines how materials are assigned to polygonal meshes and fur. If
     "byShadingGroup", GolaemHydra looks for a material with the same name as the
@@ -204,29 +235,29 @@ A complete list of Golaem attributes follows, with their default values, if any.
     material whose name is given by that asset. If "none", materials are not
     assigned at all.
 
-- primvars:enableMotionBlur (bool: false)
+- primvars:enableMotionBlur
 
     If true, and if a camera shutter interval has been defined, motion blur is
     activated. See [Motion Blur](#motion-blur) for details.
 
-- primvars:enableLod (bool: false)
+- primvars:enableLod
 
     If true, and if a primary camera is known to the renderer, levels of detail
     defined by the character's geometry are used, depending on the distance to
     the camera. See [Levels of Detail](#levels-of-detail) for details.
 
-- primvars:enableFur (bool: false)
+- primvars:enableFur
 
     If true, and if `primvars:displayMode` is "mesh", any fur in the Golaem
     cache is rendered in addition to the polygonal meshes. See [Fur](#fur) for
     details.
 
-- primvars:furRenderPercent (float: 100)
+- primvars:furRenderPercent
 
     If fur is displayed (see `primvars:enableFur`), specify a value greater than
     0 but less than 100 to display only that percentage of the fur curves.
 
-- primvars:furRefineLevel (int: 0)
+- primvars:furRefineLevel
 
     Prim refine level to be applied to the display of fur curves, in the range
     0-8. See [Fur](#fur) for details.
