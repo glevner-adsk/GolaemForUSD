@@ -17,6 +17,8 @@
 #include <pxr/base/tf/staticTokens.h>
 
 #include <glmCrowdGcgCharacter.h>
+#include <glmCrowdFBXBaker.h>
+#include <glmCrowdFBXStorage.h>
 #include <glmCrowdIOUtils.h>
 #include <glmCrowdTerrainMesh.h>
 #include <glmFurCache.h>
@@ -135,7 +137,6 @@ struct Args
           renderPercent(100),
           displayMode(golaemTokens->mesh),
           geometryTag(0),
-          materialPath("Materials"),
           materialAssignMode(golaemTokens->byShadingGroup),
           enableMotionBlur(false),
           enableLod(false),
@@ -228,7 +229,9 @@ class GolaemProcedural: public HdGpGenerativeProcedural
 {
 public:
     GolaemProcedural(const SdfPath &proceduralPrimPath)
-        : HdGpGenerativeProcedural(proceduralPrimPath)
+        : HdGpGenerativeProcedural(proceduralPrimPath),
+          _fbxStorage(),
+          _fbxBaker(_fbxStorage.touchFbxSdkManager())
     {
         glm::usdplugin::init();
         _factory = new SimulationCacheFactory();
@@ -237,10 +240,14 @@ public:
 
     virtual ~GolaemProcedural()
     {
-        TF_DEBUG_MSG(GLMHYDRA_TRACE, "deleting simulation cache factory...");
+        TF_DEBUG_MSG(
+            GLMHYDRA_TRACE,
+            "[GolaemHydra] deleting simulation cache factory...");
         delete _factory;
         TF_DEBUG_MSG(GLMHYDRA_TRACE, " done\n");
-        TF_DEBUG_MSG(GLMHYDRA_TRACE, "calling glm::usdplugin::finish()...");
+        TF_DEBUG_MSG(
+            GLMHYDRA_TRACE,
+            "[GolaemHydra] calling glm::usdplugin::finish()...");
         glm::usdplugin::finish();
         TF_DEBUG_MSG(GLMHYDRA_TRACE, " done\n");
     }
@@ -312,6 +319,12 @@ private:
     // cache of reusable FileMeshAdapter instances for rigid meshes
     std::unordered_map<MeshKey, std::shared_ptr<FileMeshAdapter>, MeshKey::Hash>
     _rigidMeshCache;
+
+    // we don't use this, but glmPrepareEntityGeometry() needs it
+    glm::crowdio::CrowdFBXStorage _fbxStorage;
+
+    // we don't use this, but glmPrepareEntityGeometry() needs it
+    glm::crowdio::CrowdFBXBaker _fbxBaker;
 };
 
 /*
@@ -414,7 +427,8 @@ Args GolaemProcedural::GetArgs(const HdSceneIndexBaseRefPtr& inputScene)
     GetTypedPrimvar(primvars, golaemTokens->materialPath, matpath);
 
     if (matpath.IsEmpty()) {
-        result.materialPath = _GetProceduralPrimPath();
+        result.materialPath =
+            _GetProceduralPrimPath().AppendElementString("Materials");
     } else {
         std::string stdpath = matpath.GetString();
         if (stdpath.back() == '/') {
@@ -444,7 +458,8 @@ void GolaemProcedural::InitCrowd(const HdSceneIndexBaseRefPtr& /*inputScene*/)
             findDirmappedFile(mappedPath, fileList[i], _dirmapRules);
             fileList[i] = mappedPath;
             TF_DEBUG_MSG(
-                GLMHYDRA_TRACE, "loading Golaem character file: %s\n",
+                GLMHYDRA_TRACE,
+                "[GolaemHydra] loading Golaem character file: %s\n",
                 mappedPath.c_str());
         }
 
@@ -742,6 +757,7 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
     // fetch the current frame number
 
     double frame = GetCurrentFrame(inputScene);
+    TF_DEBUG_MSG(GLMHYDRA_TRACE, "[GolaemHydra] frame number: %g\n", frame);
 
     // fetch the camera position and the root prim's transformation matrix, for
     // LOD computation
@@ -769,13 +785,13 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
         if (GetShutterFromRenderSettings(inputScene, &shutter)) {
             TF_DEBUG_MSG(
                 GLMHYDRA_MOTION_BLUR,
-                "motion blur shutter from render settings: %g %g\n",
+                "[GolaemHydra] motion blur shutter from render settings: %g %g\n",
                 shutter[0], shutter[1]);
             motionBlur = (shutter[0] < shutter[1]);
         } else if (GetShutterFromCamera(inputScene, &shutter)) {
             TF_DEBUG_MSG(
                 GLMHYDRA_MOTION_BLUR,
-                "motion blur shutter from camera: %g %g\n",
+                "[GolaemHydra] motion blur shutter from camera: %g %g\n",
                 shutter[0], shutter[1]);
             motionBlur = (shutter[0] < shutter[1]);
         }
@@ -793,6 +809,9 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
         if (fieldName.IsEmpty()) {
             continue;
         }
+        TF_DEBUG_MSG(
+            GLMHYDRA_TRACE,
+            "[GolaemHydra] crowd field: %s\n", fieldName.GetText());
 
         CachedSimulation& cachedSimulation =
             _factory->getCachedSimulation(
@@ -803,6 +822,9 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
             cachedSimulation.getFinalSimulationData();
 
         if (simData == nullptr) {
+            TF_DEBUG_MSG(
+                GLMHYDRA_TRACE,
+                "[GolaemHydra] no simulation data, skipping field\n");
             continue;
         }
 
@@ -810,6 +832,9 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
             cachedSimulation.getFinalFrameData(frame, UINT32_MAX, true);
 
         if (frameData == nullptr) {
+            TF_DEBUG_MSG(
+                GLMHYDRA_TRACE,
+                "[GolaemHydra] no frame data, skipping field\n");
             continue;
         }
 
@@ -840,6 +865,9 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
                 _factory->getGolaemCharacter(characterIndex);
 
             if (character == nullptr) {
+                TF_DEBUG_MSG(
+                    GLMHYDRA_TRACE, "[GolaemHydra] character %d not found\n",
+                    characterIndex);
                 continue;
             }
 
@@ -886,15 +914,19 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
                     globalPos = rootMtx.Transform(localPos);
                 }
  
-               _meshEntities.resize(_meshEntities.size() + 1);
-                MeshEntityData& entity = _meshEntities.back();
+                MeshEntityData entity;
                 size_t lodLevel;
 
-                entity.entityIndex = ientity;
-                entity.crowdFieldIndex = static_cast<uint32_t>(ifield);
                 GenerateMeshesAndFur(
                     entity, cachedSimulation, frame, ientity, motionBlur,
                     shutter, lodEnabled, cameraPos, globalPos, &lodLevel);
+
+                if (entity.meshes.empty() && entity.fur.empty()) {
+                    continue;
+                }
+
+                entity.entityIndex = ientity;
+                entity.crowdFieldIndex = static_cast<uint32_t>(ifield);
                 entity.lodIndex = static_cast<uint32_t>(lodLevel);
 
                 const glm::GeometryAsset *asset = character->getGeometryAsset(
@@ -905,6 +937,8 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
                 extent *= simData->_scales[ientity];
                 entity.extent = GetExtentDataSource(
                     -extent + localPos, extent + localPos);
+
+                _meshEntities.push_back(std::move(entity));
             }
         }
     }
@@ -1091,8 +1125,10 @@ void GolaemProcedural::GenerateMeshesAndFur(
     inputData._entityToBakeIndex = simData->_entityToBakeIndex[entityIndex];
     inputData._entityId = simData->_entityIds[entityIndex];
     inputData._dirMapRules = _dirmapRules;
-    inputData._geometryTag = static_cast<short>(_args.geometryTag);
     inputData._enableLOD = lodEnabled;
+    inputData._geometryTag = static_cast<short>(_args.geometryTag);
+    inputData._fbxStorage = &_fbxStorage;
+    inputData._fbxBaker = &_fbxBaker;
     inputData._generateFur = _args.enableFur;
 
     glm::Vector3 glmCamPos, glmEntPos;
@@ -1145,13 +1181,13 @@ void GolaemProcedural::GenerateMeshesAndFur(
         glm::crowdio::glmPrepareEntityGeometry(&inputData, &outputData);
 
     if (geoStatus != glm::crowdio::GIO_SUCCESS) {
-        std::cerr << "glmPrepareEntityGeometry() returned error: "
+        std::cerr << "[GolaemHydra] glmPrepareEntityGeometry() returned error: "
                   << glmConvertGeometryGenerationStatus(geoStatus) << '\n';
         return;
     }
 
     if (outputData._geoType != glm::crowdio::GeometryType::GCG) {
-        std::cerr << "geometry type is not GCG, ignoring\n";
+        std::cerr << "[GolaemHydra] geometry type is not GCG, ignoring\n";
         return;
     }
 
@@ -1328,7 +1364,7 @@ GolaemProcedural::UpdateDependencies(const HdSceneIndexBaseRefPtr &inputScene)
     if (_args.enableLod && !camPath.IsEmpty()) {
         TF_DEBUG_MSG(
             GLMHYDRA_DEPENDENCIES,
-            "add dependency on camera xform: %s\n",
+            "[GolaemHydra] add dependency on camera xform: %s\n",
             camPath.GetAsString().c_str());
         result[camPath].insert(HdXformSchema::GetDefaultLocator());
     }
@@ -1353,7 +1389,7 @@ GolaemProcedural::UpdateDependencies(const HdSceneIndexBaseRefPtr &inputScene)
                 if (!rsPath.IsEmpty()) {
                     TF_DEBUG_MSG(
                         GLMHYDRA_DEPENDENCIES,
-                        "add dependency on render settings shutter\n");
+                        "[GolaemHydra] add dependency on render settings shutter\n");
                     result[rsPath] = {
                         HdRenderSettingsSchema::GetShutterIntervalLocator()
                     };
@@ -1361,7 +1397,7 @@ GolaemProcedural::UpdateDependencies(const HdSceneIndexBaseRefPtr &inputScene)
             } else if (!camPath.IsEmpty()) {
                 TF_DEBUG_MSG(
                     GLMHYDRA_DEPENDENCIES,
-                    "add dependency on camera shutter: %s\n",
+                    "[GolaemHydra] add dependency on camera shutter: %s\n",
                     camPath.GetAsString().c_str());
                 result[camPath].insert(
                     HdCameraSchema::GetShutterOpenLocator());
@@ -1393,7 +1429,8 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         && dirtiedDependencies.size() > 0) {
         std::ostringstream strm;
         for (const auto& pair: dirtiedDependencies) {
-            strm << "dirtied prim: " << pair.first << " " << pair.second << '\n';
+            strm << "[GolaemHydra] dirtied prim: " << pair.first << " "
+                 << pair.second << '\n';
         }
         TfDebug::Helper().Msg(strm.str());
     }
