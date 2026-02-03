@@ -2,7 +2,6 @@
 
 #include "hydraTools.h"
 
-#include <pxr/imaging/hd/dataSource.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 
 #include <pxr/base/gf/vec2f.h>

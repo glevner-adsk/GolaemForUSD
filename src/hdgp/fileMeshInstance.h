@@ -2,6 +2,7 @@
 
 #include "fileMeshAdapter.h"
 #include "hydraTools.h"
+#include "meshDataSourceBase.h"
 
 #include <pxr/usd/sdf/path.h>
 #include <pxr/base/tf/denseHashMap.h>
@@ -18,7 +19,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
  * separated from FileMeshAdapter so that multiple instances can share the same
  * mesh but with different transformations and materials.
  */
-class FileMeshInstance
+class FileMeshInstance: public MeshDataSourceBase
 {
 public:
     FileMeshInstance(
@@ -29,9 +30,9 @@ public:
 
     // TODO: variant of SetTransform() with shutter offsets
 
-    HdContainerDataSourceHandle GetDataSource() const;
+    HdContainerDataSourceHandle GetDataSource() const override;
 
-    bool IsRigid() const {
+    bool IsRigid() const override {
         return _adapter->IsRigid();
     }
 

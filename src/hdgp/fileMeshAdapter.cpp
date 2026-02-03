@@ -161,8 +161,7 @@ HdContainerDataSourceHandle FileMeshAdapter::GetMeshDataSource() const
         .Build();
 }
 
-HdContainerDataSourceHandle
-FileMeshAdapter::GetPrimvarsDataSource() const
+HdContainerDataSourceHandle FileMeshAdapter::GetPrimvarsDataSource() const
 {
     VtTokenArray dataNames;
     VtArray<HdDataSourceBaseHandle> dataSources;
@@ -265,8 +264,7 @@ FileMeshAdapter::GetPrimvarsDataSource() const
         dataSources.push_back(uvBuilder.Build());
     }
 
-    // the final primvars data source contains the vertices,
-    // normals and UVs
+    // the final primvars data source contains the vertices, normals and UVs
 
     return HdRetainedContainerDataSource::New(
         dataNames.size(), dataNames.cdata(), dataSources.cdata());

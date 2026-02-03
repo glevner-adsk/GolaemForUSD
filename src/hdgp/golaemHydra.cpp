@@ -18,6 +18,7 @@
 
 #include <glmCrowdGcgCharacter.h>
 #include <glmCrowdFBXBaker.h>
+#include <glmCrowdFBXCharacter.h>
 #include <glmCrowdFBXStorage.h>
 #include <glmCrowdIOUtils.h>
 #include <glmCrowdTerrainMesh.h>
@@ -28,6 +29,7 @@
 #include <glmSimulationCacheFactorySimulation.h>
 
 #include "glmUSD.h"
+#include "fbxMeshAdapter.h"
 #include "fileMeshAdapter.h"
 #include "fileMeshInstance.h"
 #include "furAdapter.h"
@@ -64,9 +66,11 @@ using glm::crowdio::GlmSimulationData;
 using glm::crowdio::GlmUVMode;
 using glm::crowdio::SimulationCacheFactory;
 
+using glmhydra::FbxMeshAdapter;
 using glmhydra::FileMeshAdapter;
 using glmhydra::FileMeshInstance;
 using glmhydra::FurAdapter;
+using glmhydra::MeshDataSourceBase;
 
 using PrimvarDSMap = glmhydra::tools::PrimvarDSMap;
 using PrimvarDSMapRef = glmhydra::tools::PrimvarDSMapRef;
@@ -184,7 +188,7 @@ struct MeshEntityData
     size_t entityIndex;
     uint32_t crowdFieldIndex;
     uint32_t lodIndex;
-    std::vector<std::shared_ptr<FileMeshInstance>> meshes;
+    std::vector<std::shared_ptr<MeshDataSourceBase>> meshes;
     std::vector<std::shared_ptr<FurAdapter>> fur;
     HdContainerDataSourceHandle extent;
 };
@@ -275,6 +279,20 @@ private:
         bool motionBlur, const GfVec2d& shutter,
         bool lodEnabled, const GfVec3d& cameraPos, const GfVec3d& entityPos,
         size_t *lodLevel);
+    void GenerateGCGMeshes(
+        MeshEntityData& meshEntityData,
+        const GlmSimulationData *simData, const GlmFrameData *frameData,
+        const glm::Array<Time>& shutterOffsets,
+        const glm::crowdio::InputEntityGeoData& inputData,
+        const glm::crowdio::OutputEntityGeoData& outputData,
+        const PrimvarDSMapRef& customPrimvars);
+    void GenerateFBXMeshes(
+        MeshEntityData& meshEntityData,
+        const GlmSimulationData *simData, const GlmFrameData *frameData,
+        const glm::Array<Time>& shutterOffsets,
+        const glm::crowdio::InputEntityGeoData& inputData,
+        const glm::crowdio::OutputEntityGeoData& outputData,
+        const PrimvarDSMapRef& customPrimvars);
     PrimvarDSMapRef GenerateCustomPrimvars(
         const GlmSimulationData *simData, const GlmFrameData *frameData,
         const ShaderAssetDataContainer *shaderData,
@@ -946,10 +964,10 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
 
 /*
  * Finds all the shader and PP attributes defined for the given entity and
- * generates a Hydra data source of the appropriate type for each.  Returns a
+ * generates a Hydra data source of the appropriate type for each. Returns a
  * shared pointer to a hash map containing the name and data source for each.
- * Pass that hash map to each FileMeshInstance so that all of the mesh's
- * entities share them.
+ * Pass that hash map to each FileMeshInstance or FbxMeshAdapter so that all of
+ * the mesh's entities share them.
  */
 PrimvarDSMapRef GolaemProcedural::GenerateCustomPrimvars(
     const GlmSimulationData *simData, const GlmFrameData *frameData,
@@ -1174,6 +1192,7 @@ void GolaemProcedural::GenerateMeshesAndFur(
     } else {
         inputData._frames.assign(1, frame);
         inputData._frameDatas.assign(1, frameData);
+        shutterOffsets.push_back(0);
     }
 
     glm::crowdio::OutputEntityGeoData outputData;
@@ -1183,11 +1202,6 @@ void GolaemProcedural::GenerateMeshesAndFur(
     if (geoStatus != glm::crowdio::GIO_SUCCESS) {
         std::cerr << "[GolaemHydra] glmPrepareEntityGeometry() returned error: "
                   << glmConvertGeometryGenerationStatus(geoStatus) << '\n';
-        return;
-    }
-
-    if (outputData._geoType != glm::crowdio::GeometryType::GCG) {
-        std::cerr << "[GolaemHydra] geometry type is not GCG, ignoring\n";
         return;
     }
 
@@ -1206,86 +1220,21 @@ void GolaemProcedural::GenerateMeshesAndFur(
     PrimvarDSMapRef customPrimvars = GenerateCustomPrimvars(
         simData, frameData, shaderData, character, entityIndex);
 
-    // fetch the corresponding character, geometry and mesh count
+    // how meshes are generated depends on the geometry file type (GCG or FBX)
 
-    CrowdGcgCharacter *gcgCharacter = outputData._gcgCharacters[0];
-    const GlmGeometryFile& geoFile = gcgCharacter->getGeometry();
-    size_t meshCount = outputData._meshAssetNameIndices.size();
-    meshEntityData.meshes.reserve(meshCount);
-
-    for (size_t imesh = 0; imesh < meshCount; ++imesh) {
-
-        // fetch the mesh itself
-
-        const GlmFileMeshTransform& meshXform =
-            geoFile._transforms[outputData._transformIndicesInGcgFile[imesh]];
-        const GlmFileMesh& fileMesh = geoFile._meshes[meshXform._meshIndex];
-
-        // find the material for the mesh's shading group
-
-        SdfPath material = FindMaterialForShadingGroup(
-            inputData._character, outputData._meshShadingGroups[imesh]);
-
-        // construct an instance of FileMeshAdapter to generate Hydra data
-        // sources for the mesh's topology and geometry; if the mesh is rigid,
-        // we can cache the FileMeshAdapter and reuse it for all instances of
-        // the same mesh
-
-        std::shared_ptr<FileMeshAdapter> adapter;
-        bool isRigid = kEnableRigidEntities
-            && fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID;
-
-        if (isRigid) {
-            MeshKey meshKey;
-            meshKey.characterIndex = characterIndex;
-            meshKey.lodIndex = static_cast<int32_t>(*lodLevel);
-            meshKey.meshIndex = meshXform._meshIndex;
-            auto it = _rigidMeshCache.find(meshKey);
-            if (it == _rigidMeshCache.end()) {
-                adapter = std::make_shared<FileMeshAdapter>(fileMesh);
-                _rigidMeshCache[meshKey] = adapter;
-            } else {
-                adapter = it->second;
-            }
-        } else {
-            adapter = std::make_shared<FileMeshAdapter>(fileMesh);
-            if (motionBlur) {
-                adapter->SetGeometry(
-                    shutterOffsets, outputData._deformedVertices,
-                    outputData._deformedNormals, imesh);
-            } else {
-                adapter->SetGeometry(
-                    outputData._deformedVertices[0][imesh],
-                    outputData._deformedNormals[0][imesh]);
-            }
-        }
-
-        // construct a FileMeshInstance to add data sources for the mesh's
-        // material, custom primvars and xform (if it is rigid)
-
-        std::shared_ptr<FileMeshInstance> instance =
-            std::make_shared<FileMeshInstance>(
-                adapter, material, customPrimvars);
-
-        if (isRigid) {
-
-            // TODO: this is wrong! I don't know how to calculate the mesh's
-            // transformation matrix correctly.
-
-            auto boneIndex = meshXform._rigidSkinningBoneId;
-            auto entityType = simData->_entityTypes[entityIndex];
-            auto boneCount = simData->_boneCount[entityType];
-            auto frameDataIndex = boneIndex
-                + simData->_iBoneOffsetPerEntityType[entityType]
-                + simData->_indexInEntityType[entityIndex] * boneCount;
-
-            instance->SetTransform(
-                frameData->_bonePositions[frameDataIndex],
-                frameData->_boneOrientations[frameDataIndex],
-                simData->_scales[entityIndex]);
-        }
-
-        meshEntityData.meshes.emplace_back(instance);
+    switch (outputData._geoType) {
+    case glm::crowdio::GeometryType::GCG:
+        GenerateGCGMeshes(
+            meshEntityData, simData, frameData, shutterOffsets,
+            inputData, outputData, customPrimvars);
+        break;
+    case glm::crowdio::GeometryType::FBX:
+        GenerateFBXMeshes(
+            meshEntityData, simData, frameData, shutterOffsets,
+            inputData, outputData, customPrimvars);
+        break;
+    default:
+        return;
     }
 
     // fur?
@@ -1324,6 +1273,132 @@ void GolaemProcedural::GenerateMeshesAndFur(
 
             meshEntityData.fur.emplace_back(furAdapter);
         }
+    }
+}
+
+/*
+ * Generates meshes for the given GCG character entity at the given frame, and
+ * adds them to the MeshEntityData's meshes vector.
+ */
+void GolaemProcedural::GenerateGCGMeshes(
+    MeshEntityData& meshEntityData,
+    const GlmSimulationData *simData, const GlmFrameData *frameData,
+    const glm::Array<Time>& shutterOffsets,
+    const glm::crowdio::InputEntityGeoData& inputData,
+    const glm::crowdio::OutputEntityGeoData& outputData,
+    const PrimvarDSMapRef& customPrimvars)
+{
+    CrowdGcgCharacter *gcgCharacter = outputData._gcgCharacters[0];
+    const GlmGeometryFile& geoFile = gcgCharacter->getGeometry();
+    size_t meshCount = outputData._meshAssetNameIndices.size();
+    meshEntityData.meshes.reserve(meshCount);
+
+    for (size_t imesh = 0; imesh < meshCount; ++imesh) {
+
+        // fetch the mesh itself
+
+        const GlmFileMeshTransform& meshXform =
+            geoFile._transforms[outputData._transformIndicesInGcgFile[imesh]];
+        const GlmFileMesh& fileMesh = geoFile._meshes[meshXform._meshIndex];
+
+        // find the material for the mesh's shading group
+
+        SdfPath material = FindMaterialForShadingGroup(
+            inputData._character, outputData._meshShadingGroups[imesh]);
+
+        // construct an instance of FileMeshAdapter to generate Hydra data
+        // sources for the mesh's topology and geometry; if the mesh is rigid,
+        // we can cache the FileMeshAdapter and reuse it for all instances of
+        // the same mesh
+
+        std::shared_ptr<FileMeshAdapter> adapter;
+        bool isRigid = kEnableRigidEntities
+            && fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID;
+
+        if (isRigid) {
+            MeshKey meshKey;
+            meshKey.characterIndex = inputData._characterIdx;
+            if (inputData._geoFileIndex < 0) {
+                meshKey.lodIndex =
+                    static_cast<int32_t>(outputData._geometryFileIndexes[0]);
+            } else {
+                meshKey.lodIndex = 0;
+            }
+            meshKey.meshIndex = meshXform._meshIndex;
+            auto it = _rigidMeshCache.find(meshKey);
+            if (it == _rigidMeshCache.end()) {
+                adapter = std::make_shared<FileMeshAdapter>(fileMesh);
+                _rigidMeshCache[meshKey] = adapter;
+            } else {
+                adapter = it->second;
+            }
+        } else {
+            adapter = std::make_shared<FileMeshAdapter>(fileMesh);
+            if (shutterOffsets.size() > 1) {
+                adapter->SetGeometry(
+                    shutterOffsets, outputData._deformedVertices,
+                    outputData._deformedNormals, imesh);
+            } else {
+                adapter->SetGeometry(
+                    outputData._deformedVertices[0][imesh],
+                    outputData._deformedNormals[0][imesh]);
+            }
+        }
+
+        // construct a FileMeshInstance to add data sources for the mesh's
+        // material, custom primvars and xform (if it is rigid)
+
+        std::shared_ptr<FileMeshInstance> instance =
+            std::make_shared<FileMeshInstance>(
+                adapter, material, customPrimvars);
+
+        if (isRigid) {
+
+            // TODO: this is wrong! I don't know how to calculate the mesh's
+            // transformation matrix correctly.
+
+            auto boneIndex = meshXform._rigidSkinningBoneId;
+            auto entityIndex = inputData._entityIndex;
+            auto entityType = simData->_entityTypes[entityIndex];
+            auto boneCount = simData->_boneCount[entityType];
+            auto frameDataIndex = boneIndex
+                + simData->_iBoneOffsetPerEntityType[entityType]
+                + simData->_indexInEntityType[entityIndex] * boneCount;
+
+            instance->SetTransform(
+                frameData->_bonePositions[frameDataIndex],
+                frameData->_boneOrientations[frameDataIndex],
+                simData->_scales[entityIndex]);
+        }
+
+        meshEntityData.meshes.emplace_back(instance);
+    }
+}
+
+/*
+ * Generates meshes for the given FBX character entity at the given frame, and
+ * adds them to the MeshEntityData's meshes vector.
+ */
+void GolaemProcedural::GenerateFBXMeshes(
+    MeshEntityData& meshEntityData,
+    const GlmSimulationData *simData, const GlmFrameData *frameData,
+    const glm::Array<Time>& shutterOffsets,
+    const glm::crowdio::InputEntityGeoData& inputData,
+    const glm::crowdio::OutputEntityGeoData& outputData,
+    const PrimvarDSMapRef& customPrimvars)
+{
+    size_t meshCount = outputData._meshAssetNameIndices.size();
+    glm::crowdio::CrowdFBXCharacter *fbxCharacter = outputData._fbxCharacters[0];
+    meshEntityData.meshes.reserve(meshCount);
+
+    for (size_t imesh = 0; imesh < meshCount; ++imesh) {
+        size_t geoFileIndex = outputData._meshAssetNameIndices[imesh];
+        FbxMesh *fbxMesh = fbxCharacter->getCharacterFBXMesh(geoFileIndex);
+        meshEntityData.meshes.emplace_back(
+            std::make_shared<FbxMeshAdapter>(
+                *fbxMesh, shutterOffsets,
+                outputData._deformedVertices, outputData._deformedNormals,
+                geoFileIndex, outputData._meshAssetMaterialIndices[imesh]));
     }
 }
 
@@ -1610,7 +1685,7 @@ HdSceneIndexPrim GolaemProcedural::GetChildPrim(
         // mesh nodes
 
         else if (childPrimPath.GetName()[0] == 'm') {
-            const std::shared_ptr<FileMeshInstance>& instance =
+            const std::shared_ptr<MeshDataSourceBase>& instance =
                 meshEntity.meshes[subIndex];
 
             result.primType = HdPrimTypeTokens->mesh;
