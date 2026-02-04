@@ -13,9 +13,6 @@
 
 #include <fbxsdk.h>
 
-#include <iostream>
-#include <vector>
-
 PXR_NAMESPACE_USING_DIRECTIVE
 
 using Time = HdSampledDataSource::Time;
@@ -64,6 +61,10 @@ FbxMeshAdapter::FbxMeshAdapter(
         }
     }
 
+    auto IsPolyIgnored = [mtlArray, meshMaterialIndex](int polyIndex) {
+        return mtlArray && (*mtlArray)[polyIndex] != meshMaterialIndex;
+    };
+
     int allVertexCount = fbxMesh->GetControlPointsCount();
     int allPolyCount = fbxMesh->GetPolygonCount();
     std::vector<int> vertexMap(allVertexCount, -1);
@@ -72,7 +73,7 @@ FbxMeshAdapter::FbxMeshAdapter(
     int usedPolyVertexCount = 0;
 
     for (int ipoly = 0; ipoly < allPolyCount; ++ipoly) {
-        if (mtlArray && mtlArray->GetAt(ipoly) != meshMaterialIndex) {
+        if (IsPolyIgnored(ipoly)) {
             continue;
         }
         int nvert = fbxMesh->GetPolygonSize(ipoly);
@@ -92,7 +93,7 @@ FbxMeshAdapter::FbxMeshAdapter(
     _vertexIndices.reserve(usedPolyVertexCount);
 
     for (int ipoly = 0; ipoly < allPolyCount; ++ipoly) {
-        if (mtlArray && mtlArray->GetAt(ipoly) != meshMaterialIndex) {
+        if (IsPolyIgnored(ipoly)) {
             continue;
         }
         int nvert = fbxMesh->GetPolygonSize(ipoly);
@@ -145,7 +146,7 @@ FbxMeshAdapter::FbxMeshAdapter(
             int inputIndex = 0;
             for (int ipoly = 0; ipoly < allPolyCount; ++ipoly) {
                 int nvert = fbxMesh->GetPolygonSize(ipoly);
-                if (mtlArray && mtlArray->GetAt(ipoly) != meshMaterialIndex) {
+                if (IsPolyIgnored(ipoly)) {
                     inputIndex += nvert;
                 } else {
                     for (int ivert = 0; ivert < nvert; ++ivert) {
@@ -246,7 +247,7 @@ FbxMeshAdapter::FbxMeshAdapter(
 
                 for (int ipoly = 0, pvIndex = 0; ipoly < allPolyCount; ++ipoly) {
                     int nvert = fbxMesh->GetPolygonSize(ipoly);
-                    if (mtlArray && (*mtlArray)[ipoly] != meshMaterialIndex) {
+                    if (IsPolyIgnored(ipoly)) {
                         pvIndex += nvert;
                     } else {
                         for (int ivert = 0; ivert < nvert; ++ivert) {
@@ -281,7 +282,7 @@ FbxMeshAdapter::FbxMeshAdapter(
 
                 for (int ipoly = 0, pvIndex = 0; ipoly < allPolyCount; ++ipoly) {
                     int nvert = fbxMesh->GetPolygonSize(ipoly);
-                    if (mtlArray && (*mtlArray)[ipoly] != meshMaterialIndex) {
+                    if (IsPolyIgnored(ipoly)) {
                         pvIndex += nvert;
                     } else {
                         for (int ivert = 0; ivert < nvert; ++ivert) {
