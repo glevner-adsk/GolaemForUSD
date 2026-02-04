@@ -1387,18 +1387,31 @@ void GolaemProcedural::GenerateFBXMeshes(
     const glm::crowdio::OutputEntityGeoData& outputData,
     const PrimvarDSMapRef& customPrimvars)
 {
-    size_t meshCount = outputData._meshAssetNameIndices.size();
     glm::crowdio::CrowdFBXCharacter *fbxCharacter = outputData._fbxCharacters[0];
+    const glm::crowdio::GeometryBehaviorInfo& behavior = outputData._geoBeInfo;
+    FbxTime fbxTime;
+
+    if (behavior._idGeometryFileIdx >= 0) {
+        float (&geoCacheData)[3] =
+            frameData->_geoBehaviorAnimFrameInfo[behavior._geoDataIndex];
+        FbxTime::EMode timeMode =
+            fbxCharacter->touchFBXScene()->GetGlobalSettings().GetTimeMode();
+        double frameRate = FbxTime::GetFrameRate(timeMode);
+        fbxTime.SetGlobalTimeMode(FbxTime::eCustom, frameRate);
+        fbxTime.SetMilliSeconds(
+            static_cast<FbxLongLong>(geoCacheData[0] / frameRate * 1000.0));
+    }
+
+    size_t meshCount = outputData._meshAssetNameIndices.size();
     meshEntityData.meshes.reserve(meshCount);
 
     for (size_t imesh = 0; imesh < meshCount; ++imesh) {
-        size_t geoFileIndex = outputData._meshAssetNameIndices[imesh];
-        FbxMesh *fbxMesh = fbxCharacter->getCharacterFBXMesh(geoFileIndex);
         meshEntityData.meshes.emplace_back(
             std::make_shared<FbxMeshAdapter>(
-                *fbxMesh, shutterOffsets,
+                *fbxCharacter, outputData._meshAssetNameIndices[imesh],
+                fbxTime, shutterOffsets,
                 outputData._deformedVertices, outputData._deformedNormals,
-                geoFileIndex, outputData._meshAssetMaterialIndices[imesh]));
+                outputData._meshAssetMaterialIndices[imesh]));
     }
 }
 

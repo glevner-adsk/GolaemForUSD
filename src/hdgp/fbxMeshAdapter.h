@@ -13,8 +13,14 @@
 
 #include <vector>
 
+namespace glm {
+    namespace crowdio {
+        class CrowdFBXCharacter;
+    }
+}
+
 #include <fbxsdk/fbxsdk_nsbegin.h>
-class FbxMesh;
+class FbxTime;
 #include <fbxsdk/fbxsdk_nsend.h>
 
 namespace glmhydra {
@@ -23,11 +29,12 @@ class FbxMeshAdapter: public MeshDataSourceBase
 {
 public:
     FbxMeshAdapter(
-        FBXSDK_NAMESPACE::FbxMesh& mesh,
+        glm::crowdio::CrowdFBXCharacter& fbxCharacter, size_t meshIndex,
+        const FBXSDK_NAMESPACE::FbxTime& fbxTime,
         const glm::Array<PXR_NS::HdSampledDataSource::Time>& shutterOffsets,
         const tools::DeformedVectors& deformedVertices,
         const tools::DeformedVectors& deformedNormals,
-        size_t meshIndex, int meshMaterialIndex);
+        int meshMaterialIndex);
 
     PXR_NS::HdContainerDataSourceHandle GetDataSource() const override;
 

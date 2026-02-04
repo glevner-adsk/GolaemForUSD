@@ -1,5 +1,8 @@
 #include "fbxMeshAdapter.h"
 
+#include <glmCrowdFBXBaker.h>
+#include <glmCrowdFBXCharacter.h>
+
 #include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/meshTopologySchema.h>
 #include <pxr/imaging/hd/primvarSchema.h>
@@ -26,18 +29,28 @@ TF_DEFINE_PRIVATE_TOKENS(
 namespace glmhydra {
 
 FbxMeshAdapter::FbxMeshAdapter(
-    FbxMesh& mesh,
-    const glm::Array<Time>& shutterOffsets,
+    glm::crowdio::CrowdFBXCharacter& fbxCharacter, size_t meshIndex,
+    const FbxTime& fbxTime, const glm::Array<Time>& shutterOffsets,
     const tools::DeformedVectors& deformedVertices,
     const tools::DeformedVectors& deformedNormals,
-    size_t meshIndex, int meshMaterialIndex)
+    int meshMaterialIndex)
     : _shutterOffsets(shutterOffsets.begin(), shutterOffsets.end())
 {
+    // fetch the transformation matrix for this mesh
+
+    FbxAMatrix nodeTransform, geomTransform;
+    FbxNode *fbxNode = fbxCharacter.getCharacterFBXMeshes()[meshIndex];
+
+    fbxCharacter.getMeshGlobalTransform(nodeTransform, fbxNode, fbxTime);
+    glm::crowdio::CrowdFBXBaker::getGeomTransform(geomTransform, fbxNode);
+    nodeTransform *= geomTransform;
+
     // polygons bound to a different material are ignored, meaning some number
     // of vertices may be superfluous, so we construct a map of original vertex
     // indices to used vertex indices
 
-    const FbxLayer *fbxLayer0 = mesh.GetLayer(0);
+    FbxMesh *fbxMesh = fbxCharacter.getCharacterFBXMesh(meshIndex);
+    const FbxLayer *fbxLayer0 = fbxMesh->GetLayer(0);
     FbxLayerElementArrayTemplate<int> const *mtlArray = nullptr;
 
     if (fbxLayer0) {
@@ -47,8 +60,8 @@ FbxMeshAdapter::FbxMeshAdapter(
         }
     }
 
-    int allVertexCount = mesh.GetControlPointsCount();
-    int allPolyCount = mesh.GetPolygonCount();
+    int allVertexCount = fbxMesh->GetControlPointsCount();
+    int allPolyCount = fbxMesh->GetPolygonCount();
     std::vector<int> vertexMap(allVertexCount, -1);
     int usedVertexCount = 0;
     int usedPolyCount = 0;
@@ -58,9 +71,9 @@ FbxMeshAdapter::FbxMeshAdapter(
         if (mtlArray && mtlArray->GetAt(ipoly) != meshMaterialIndex) {
             continue;
         }
-        int nvert = mesh.GetPolygonSize(ipoly);
+        int nvert = fbxMesh->GetPolygonSize(ipoly);
         for (int ivert = 0; ivert < nvert; ++ivert) {
-            int vertIndex = mesh.GetPolygonVertex(ipoly, ivert);
+            int vertIndex = fbxMesh->GetPolygonVertex(ipoly, ivert);
             if (vertexMap[vertIndex] < 0) {
                 vertexMap[vertIndex] = usedVertexCount++;
             }
@@ -78,9 +91,9 @@ FbxMeshAdapter::FbxMeshAdapter(
         if (mtlArray && mtlArray->GetAt(ipoly) != meshMaterialIndex) {
             continue;
         }
-        int nvert = mesh.GetPolygonSize(ipoly);
+        int nvert = fbxMesh->GetPolygonSize(ipoly);
         for (int ivert = 0; ivert < nvert; ++ivert) {
-            int vertIndex = mesh.GetPolygonVertex(ipoly, ivert);
+            int vertIndex = fbxMesh->GetPolygonVertex(ipoly, ivert);
             _vertexIndices.push_back(vertexMap[vertIndex]);
         }
         _vertexCounts.push_back(nvert);
@@ -89,9 +102,8 @@ FbxMeshAdapter::FbxMeshAdapter(
     // for each time sample, copy the deformed vertices we need
 
     size_t sampleCount = shutterOffsets.size();
-    _vertices.resize(sampleCount);
-
     assert(deformedVertices.size() == sampleCount);
+    _vertices.resize(sampleCount);
 
     for (size_t i = 0; i < sampleCount; ++i) {
         assert(deformedVertices[i].size() > meshIndex);
@@ -102,12 +114,16 @@ FbxMeshAdapter::FbxMeshAdapter(
         for (int ivert = 0; ivert < allVertexCount; ++ivert) {
             int myIndex = vertexMap[ivert];
             if (myIndex >= 0) {
-                dst[myIndex].Set(src[ivert].getFloatValues());
+                const glm::Vector3& glmVect = src[ivert];
+                FbxVector4 fbxVect(glmVect.x, glmVect.y, glmVect.z);
+                fbxVect = nodeTransform.MultT(fbxVect);
+                dst[myIndex].Set(
+                    static_cast<float>(fbxVect[0]),
+                    static_cast<float>(fbxVect[1]),
+                    static_cast<float>(fbxVect[2]));
             }
         }
     }
-
-    // TODO: handle transformation matrices
 }
 
 HdContainerDataSourceHandle FbxMeshAdapter::GetMeshDataSource() const
