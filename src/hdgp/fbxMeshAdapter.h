@@ -4,6 +4,8 @@
 #include "meshDataSourceBase.h"
 
 #include <pxr/imaging/hd/retainedDataSource.h>
+#include <pxr/usd/sdf/path.h>
+#include <pxr/base/gf/vec2f.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/vt/array.h>
 
@@ -34,7 +36,8 @@ public:
         const glm::Array<PXR_NS::HdSampledDataSource::Time>& shutterOffsets,
         const tools::DeformedVectors& deformedVertices,
         const tools::DeformedVectors& deformedNormals,
-        int meshMaterialIndex);
+        int meshMaterialIndex, const PXR_NS::SdfPath& material,
+        const tools::PrimvarDSMapRef& customPrimvars);
 
     PXR_NS::HdContainerDataSourceHandle GetDataSource() const override;
 
@@ -43,6 +46,8 @@ private:
         PXR_NS::HdRetainedTypedSampledDataSource<PXR_NS::VtIntArray>;
     using Vec3fArrayDS =
         PXR_NS::HdRetainedTypedMultisampledDataSource<PXR_NS::VtVec3fArray>;
+    using Vec2fArrayDS =
+        PXR_NS::HdRetainedTypedSampledDataSource<PXR_NS::VtVec2fArray>;
 
     PXR_NS::HdContainerDataSourceHandle GetMeshDataSource() const;
     PXR_NS::HdContainerDataSourceHandle GetPrimvarsDataSource() const;
@@ -51,7 +56,13 @@ private:
     PXR_NS::VtIntArray _vertexIndices;
     std::vector<PXR_NS::VtVec3fArray> _vertices;
     std::vector<PXR_NS::VtVec3fArray> _normals;
+    PXR_NS::VtVec2fArray _uvs;
+    PXR_NS::VtIntArray _uvIndices;
+    bool _areUvsPerVertex;
+    bool _areUvsIndexed;
     std::vector<PXR_NS::HdSampledDataSource::Time> _shutterOffsets;
+    PXR_NS::SdfPath _material;
+    const tools::PrimvarDSMapRef _customPrimvars;
 };
 
 }  // namespace glmhydra

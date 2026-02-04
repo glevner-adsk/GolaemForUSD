@@ -3,6 +3,7 @@
 #include <glmCrowdFBXBaker.h>
 #include <glmCrowdFBXCharacter.h>
 
+#include <pxr/imaging/hd/materialBindingsSchema.h>
 #include <pxr/imaging/hd/meshSchema.h>
 #include <pxr/imaging/hd/meshTopologySchema.h>
 #include <pxr/imaging/hd/primvarSchema.h>
@@ -31,8 +32,13 @@ FbxMeshAdapter::FbxMeshAdapter(
     const FbxTime& fbxTime, const glm::Array<Time>& shutterOffsets,
     const tools::DeformedVectors& deformedVertices,
     const tools::DeformedVectors& deformedNormals,
-    int meshMaterialIndex)
-    : _shutterOffsets(shutterOffsets.begin(), shutterOffsets.end())
+    int meshMaterialIndex, const SdfPath& material,
+    const tools::PrimvarDSMapRef& customPrimvars)
+    : _shutterOffsets(shutterOffsets.begin(), shutterOffsets.end()),
+      _areUvsPerVertex(false),
+      _areUvsIndexed(false),
+      _material(material),
+      _customPrimvars(customPrimvars)
 {
     // fetch the transformation matrix for this mesh
 
@@ -155,6 +161,141 @@ FbxMeshAdapter::FbxMeshAdapter(
             }
         }
     }
+
+    // create UV and UV index tables, if the mesh has UVs (note that if there
+    // are multiple UV sets, we only take the first)
+
+    if (fbxMesh->GetLayerCount(FbxLayerElement::eUV) > 0) {
+        const FbxLayer* layer = fbxMesh->GetLayer(
+            fbxMesh->GetLayerTypedIndex(0, FbxLayerElement::eUV));
+        const FbxLayerElementUV* uvElement = layer->GetUVs();
+
+        _areUvsPerVertex =
+            uvElement->GetMappingMode() == FbxLayerElement::eByControlPoint;
+        _areUvsIndexed =
+            uvElement->GetReferenceMode() != FbxLayerElement::eDirect;
+
+        if (_areUvsPerVertex) {
+
+            // indexed, per vertex UVs: figure out which UVs are actually used
+            // (referenced by a vertex that is referenced by a visible polygon),
+            // copy them to our (potentially) smaller UV table, and save indices
+            // into that table for each visible vertex
+
+            if (_areUvsIndexed) {
+                int allUvCount = uvElement->GetDirectArray().GetCount();
+                std::vector<int> uvMap(allUvCount, -1);
+                int usedUvCount = 0;
+
+                _uvIndices.reserve(usedVertexCount);
+
+                for (int ivert = 0; ivert < allVertexCount; ++ivert) {
+                    if (vertexMap[ivert] >= 0) {
+                        int uvIndex = uvElement->GetIndexArray()[ivert];
+                        if (uvMap[uvIndex] < 0) {
+                            uvMap[uvIndex] = usedUvCount++;
+                        }
+                        _uvIndices.push_back(uvMap[uvIndex]);
+                    }
+                }
+
+                _uvs.resize(usedUvCount);
+
+                for (int uvIndex = 0; uvIndex < allUvCount; ++uvIndex) {
+                    int myIndex = uvMap[uvIndex];
+                    if (myIndex >= 0) {
+                        const FbxVector2& uv =
+                            uvElement->GetDirectArray()[uvIndex];
+                        _uvs[myIndex].Set(
+                            static_cast<float>(uv[0]),
+                            static_cast<float>(uv[1]));
+                    }
+                }
+            }
+
+            // unindexed, per vertex UVs: copy the UVs for the vertices
+            // referenced by visible polygons to our (potentially) smaller UV
+            // table
+
+            else {
+                _uvs.reserve(usedVertexCount);
+
+                for (int ivert = 0; ivert < allVertexCount; ++ivert) {
+                    if (vertexMap[ivert] >= 0) {
+                        const FbxVector2& uv =
+                            uvElement->GetDirectArray()[ivert];
+                        _uvs.emplace_back(
+                            static_cast<float>(uv[0]),
+                            static_cast<float>(uv[1]));
+                    }
+                }
+            }
+        } else {
+
+            // indexed, per polygon vertex UVs: figure out which UVs are
+            // actually used (referenced by a visible polygon), copy them to our
+            // (potentially) smaller UV table, and save indices into that table
+            // for each visible polygon vertex
+
+            if (_areUvsIndexed) {
+                int allUvCount = uvElement->GetDirectArray().GetCount();
+                std::vector<int> uvMap(allUvCount, -1);
+                int usedUvCount = 0;
+
+                _uvIndices.reserve(usedPolyVertexCount);
+
+                for (int ipoly = 0, pvIndex = 0; ipoly < allPolyCount; ++ipoly) {
+                    int nvert = fbxMesh->GetPolygonSize(ipoly);
+                    if (mtlArray && (*mtlArray)[ipoly] != meshMaterialIndex) {
+                        pvIndex += nvert;
+                    } else {
+                        for (int ivert = 0; ivert < nvert; ++ivert) {
+                            int uvIndex = uvElement->GetIndexArray()[pvIndex++];
+                            if (uvMap[uvIndex] < 0) {
+                                uvMap[uvIndex] = usedUvCount++;
+                            }
+                            _uvIndices.push_back(uvMap[uvIndex]);
+                        }
+                    }
+                }
+
+                _uvs.resize(usedUvCount);
+
+                for (int uvIndex = 0; uvIndex < allUvCount; ++uvIndex) {
+                    int myIndex = uvMap[uvIndex];
+                    if (myIndex >= 0) {
+                        const FbxVector2& uv =
+                            uvElement->GetDirectArray()[uvIndex];
+                        _uvs[myIndex].Set(
+                            static_cast<float>(uv[0]),
+                            static_cast<float>(uv[1]));
+                    }
+                }
+            }
+
+            // unindexed, per polygon vertex UVs: copy the UVs for the vertices
+            // in visible polygons to our (potentially) smaller UV table
+
+            else {
+                _uvs.reserve(usedPolyVertexCount);
+
+                for (int ipoly = 0, pvIndex = 0; ipoly < allPolyCount; ++ipoly) {
+                    int nvert = fbxMesh->GetPolygonSize(ipoly);
+                    if (mtlArray && (*mtlArray)[ipoly] != meshMaterialIndex) {
+                        pvIndex += nvert;
+                    } else {
+                        for (int ivert = 0; ivert < nvert; ++ivert) {
+                            const FbxVector2& uv =
+                                uvElement->GetDirectArray()[pvIndex++];
+                            _uvs.emplace_back(
+                                static_cast<float>(uv[0]),
+                                static_cast<float>(uv[1]));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 HdContainerDataSourceHandle FbxMeshAdapter::GetMeshDataSource() const
@@ -175,6 +316,10 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetPrimvarsDataSource() const
     VtTokenArray dataNames;
     VtArray<HdDataSourceBaseHandle> dataSources;
     size_t capacity = 3;  // points, normals and UVs
+
+    if (_customPrimvars) {
+        capacity += _customPrimvars->size();
+    }
 
     dataNames.reserve(capacity);
     dataSources.reserve(capacity);
@@ -217,7 +362,49 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetPrimvarsDataSource() const
         dataSources.push_back(normalDataSource);
     }
 
-    // the final primvars data source contains the vertices, normals and UVs
+    // UV data source, if the mesh contains UVs
+
+    HdContainerDataSourceHandle uvDataSource;
+
+    if (_uvs.size() > 0) {
+        HdPrimvarSchema::Builder uvBuilder;
+
+        // UVs may or may not be indexed
+
+        if (_areUvsIndexed) {
+            uvBuilder.SetIndexedPrimvarValue(Vec2fArrayDS::New(_uvs));
+            uvBuilder.SetIndices(IntArrayDS::New(_uvIndices));
+        } else {
+            uvBuilder.SetPrimvarValue(Vec2fArrayDS::New(_uvs));
+        }
+
+        // uvs may or may not be shared by polygons using the same vertices
+
+        if (_areUvsPerVertex) {
+            uvBuilder.SetInterpolation(tools::GetVertexInterpDataSource());
+        } else {
+            uvBuilder.SetInterpolation(tools::GetFaceVaryingInterpDataSource());
+        }
+
+        uvBuilder.SetRole(
+            HdPrimvarSchema::BuildRoleDataSource(
+                HdPrimvarSchemaTokens->textureCoordinate));
+
+        dataNames.push_back(fbxMeshAdapterTokens->st);
+        dataSources.push_back(uvBuilder.Build());
+    }
+
+    // custom primvars
+
+    if (_customPrimvars) {
+        for (auto it: *_customPrimvars) {
+            dataNames.push_back(it.first);
+            dataSources.push_back(it.second);
+        }
+    }
+
+    // the final primvars data source contains the vertices, normals, UVs and
+    // custom primvars
 
     return HdRetainedContainerDataSource::New(
         dataNames.size(), dataNames.cdata(), dataSources.cdata());
@@ -240,12 +427,10 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetDataSource() const
     dataNames.push_back(HdPrimvarsSchemaTokens->primvars);
     dataSources.push_back(GetPrimvarsDataSource());
 
-    /*
     if (!_material.IsEmpty()) {
         dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
         dataSources.push_back(tools::GetMaterialDataSource(_material));
     }
-    */
 
     return HdRetainedContainerDataSource::New(
         dataNames.size(), dataNames.cdata(), dataSources.cdata());

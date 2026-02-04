@@ -287,8 +287,7 @@ private:
         const glm::crowdio::OutputEntityGeoData& outputData,
         const PrimvarDSMapRef& customPrimvars);
     void GenerateFBXMeshes(
-        MeshEntityData& meshEntityData,
-        const GlmSimulationData *simData, const GlmFrameData *frameData,
+        MeshEntityData& meshEntityData, const GlmFrameData *frameData,
         const glm::Array<Time>& shutterOffsets,
         const glm::crowdio::InputEntityGeoData& inputData,
         const glm::crowdio::OutputEntityGeoData& outputData,
@@ -1230,7 +1229,7 @@ void GolaemProcedural::GenerateMeshesAndFur(
         break;
     case glm::crowdio::GeometryType::FBX:
         GenerateFBXMeshes(
-            meshEntityData, simData, frameData, shutterOffsets,
+            meshEntityData, frameData, shutterOffsets,
             inputData, outputData, customPrimvars);
         break;
     default:
@@ -1380,14 +1379,16 @@ void GolaemProcedural::GenerateGCGMeshes(
  * adds them to the MeshEntityData's meshes vector.
  */
 void GolaemProcedural::GenerateFBXMeshes(
-    MeshEntityData& meshEntityData,
-    const GlmSimulationData *simData, const GlmFrameData *frameData,
+    MeshEntityData& meshEntityData, const GlmFrameData *frameData,
     const glm::Array<Time>& shutterOffsets,
     const glm::crowdio::InputEntityGeoData& inputData,
     const glm::crowdio::OutputEntityGeoData& outputData,
     const PrimvarDSMapRef& customPrimvars)
 {
     glm::crowdio::CrowdFBXCharacter *fbxCharacter = outputData._fbxCharacters[0];
+
+    // not sure why we need fbxTime, but we do...
+
     const glm::crowdio::GeometryBehaviorInfo& behavior = outputData._geoBeInfo;
     FbxTime fbxTime;
 
@@ -1402,16 +1403,23 @@ void GolaemProcedural::GenerateFBXMeshes(
             static_cast<FbxLongLong>(geoCacheData[0] / frameRate * 1000.0));
     }
 
+    // construct an instance of FbxMeshAdapter to generate Hydra data sources
+    // for each mesh
+
     size_t meshCount = outputData._meshAssetNameIndices.size();
     meshEntityData.meshes.reserve(meshCount);
 
     for (size_t imesh = 0; imesh < meshCount; ++imesh) {
+        SdfPath material = FindMaterialForShadingGroup(
+            inputData._character, outputData._meshShadingGroups[imesh]);
+
         meshEntityData.meshes.emplace_back(
             std::make_shared<FbxMeshAdapter>(
                 *fbxCharacter, outputData._meshAssetNameIndices[imesh],
                 fbxTime, shutterOffsets,
                 outputData._deformedVertices, outputData._deformedNormals,
-                outputData._meshAssetMaterialIndices[imesh]));
+                outputData._meshAssetMaterialIndices[imesh],
+                material, customPrimvars));
     }
 }
 
