@@ -12,8 +12,6 @@
 
 #include <fbxsdk.h>
 
-#undef NDEBUG
-#include <cassert>
 #include <iostream>
 #include <vector>
 
@@ -102,15 +100,13 @@ FbxMeshAdapter::FbxMeshAdapter(
     // for each time sample, copy the deformed vertices we need
 
     size_t sampleCount = shutterOffsets.size();
-    assert(deformedVertices.size() == sampleCount);
     _vertices.resize(sampleCount);
 
     for (size_t i = 0; i < sampleCount; ++i) {
-        assert(deformedVertices[i].size() > meshIndex);
         const glm::Array<glm::Vector3>& src = deformedVertices[i][meshIndex];
-        assert(src.size() == allVertexCount);
         VtVec3fArray& dst = _vertices[i];
         dst.resize(usedVertexCount);
+
         for (int ivert = 0; ivert < allVertexCount; ++ivert) {
             int myIndex = vertexMap[ivert];
             if (myIndex >= 0) {
@@ -121,6 +117,41 @@ FbxMeshAdapter::FbxMeshAdapter(
                     static_cast<float>(fbxVect[0]),
                     static_cast<float>(fbxVect[1]),
                     static_cast<float>(fbxVect[2]));
+            }
+        }
+    }
+
+    // for each time sample, copy the deformed normals we need (normals are
+    // always per polygon vertex)
+
+    if (fbxLayer0 && fbxLayer0->GetNormals()) {
+        FbxAMatrix globalRotate;
+        globalRotate.SetIdentity();
+        globalRotate.SetR(nodeTransform.GetR());
+
+        _normals.resize(sampleCount);
+
+        for (size_t i = 0; i < sampleCount; ++i) {
+            const glm::Array<glm::Vector3>& src = deformedNormals[i][meshIndex];
+            VtVec3fArray& dst = _normals[i];
+            dst.reserve(usedPolyVertexCount);
+
+            int inputIndex = 0;
+            for (int ipoly = 0; ipoly < allPolyCount; ++ipoly) {
+                int nvert = fbxMesh->GetPolygonSize(ipoly);
+                if (mtlArray && mtlArray->GetAt(ipoly) != meshMaterialIndex) {
+                    inputIndex += nvert;
+                } else {
+                    for (int ivert = 0; ivert < nvert; ++ivert) {
+                        const glm::Vector3& glmVect = src[inputIndex++];
+                        FbxVector4 fbxVect(glmVect.x, glmVect.y, glmVect.z);
+                        fbxVect = globalRotate.MultT(fbxVect);
+                        dst.emplace_back(
+                            static_cast<float>(fbxVect[0]),
+                            static_cast<float>(fbxVect[1]),
+                            static_cast<float>(fbxVect[2]));
+                    }
+                }
             }
         }
     }
@@ -165,6 +196,26 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetPrimvarsDataSource() const
 
     dataNames.push_back(HdPrimvarsSchemaTokens->points);
     dataSources.push_back(vertexDataSource);
+
+    // normal data source, if the mesh contains normals
+
+    if (_normals.size() > 0) {
+        HdContainerDataSourceHandle normalDataSource =
+            HdPrimvarSchema::Builder()
+            .SetPrimvarValue(
+                Vec3fArrayDS::New(
+                    _shutterOffsets.size(),
+                    const_cast<Time*>(_shutterOffsets.data()),
+                    const_cast<VtVec3fArray*>(_normals.data())))
+            .SetInterpolation(tools::GetFaceVaryingInterpDataSource())
+            .SetRole(
+                HdPrimvarSchema::BuildRoleDataSource(
+                    HdPrimvarSchemaTokens->normal))
+            .Build();
+
+        dataNames.push_back(HdPrimvarsSchemaTokens->normals);
+        dataSources.push_back(normalDataSource);
+    }
 
     // the final primvars data source contains the vertices, normals and UVs
 

@@ -50,6 +50,7 @@ private:
     PXR_NS::VtIntArray _vertexCounts;
     PXR_NS::VtIntArray _vertexIndices;
     std::vector<PXR_NS::VtVec3fArray> _vertices;
+    std::vector<PXR_NS::VtVec3fArray> _normals;
     std::vector<PXR_NS::HdSampledDataSource::Time> _shutterOffsets;
 };
 
