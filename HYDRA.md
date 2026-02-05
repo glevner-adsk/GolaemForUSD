@@ -118,6 +118,9 @@ GolaemHydra Attributes
 
 A complete list of Golaem attributes follows, with their default values, if any.
 
+Note that the plugin reads attribute values only once, when it is loaded.
+Animating their values, or changing them interactively, will have no effect.
+
 | Attribute                    | Type  | Default Value    |
 | ---------------------------- | ----- | ---------------- |
 | primvars:hdGp:proceduralType | token |                  |
