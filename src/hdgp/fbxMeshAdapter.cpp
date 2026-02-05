@@ -31,10 +31,10 @@ namespace glmhydra {
 FbxMeshAdapter::FbxMeshAdapter(
     glm::crowdio::CrowdFBXCharacter& fbxCharacter, size_t meshIndex,
     const glm::Array<FbxTime>& fbxTimes, const glm::Array<Time>& shutterOffsets,
-    const tools::DeformedVectors& deformedVertices,
-    const tools::DeformedVectors& deformedNormals,
+    const DeformedVectors& deformedVertices,
+    const DeformedVectors& deformedNormals,
     int meshMaterialIndex, const SdfPath& material,
-    const tools::PrimvarDSMapRef& customPrimvars)
+    const PrimvarDSMapRef& customPrimvars)
     : _xforms(shutterOffsets.size()),
       _shutterOffsets(shutterOffsets.begin(), shutterOffsets.end()),
       _areUvsPerVertex(false),
@@ -343,7 +343,7 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetPrimvarsDataSource() const
                 _shutterOffsets.size(),
                 const_cast<Time*>(_shutterOffsets.data()),
                 const_cast<VtVec3fArray*>(_vertices.data())))
-        .SetInterpolation(tools::GetVertexInterpDataSource())
+        .SetInterpolation(GetVertexInterpDataSource())
         .SetRole(
             HdPrimvarSchema::BuildRoleDataSource(
                 HdPrimvarSchemaTokens->point))
@@ -362,7 +362,7 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetPrimvarsDataSource() const
                     _shutterOffsets.size(),
                     const_cast<Time*>(_shutterOffsets.data()),
                     const_cast<VtVec3fArray*>(_normals.data())))
-            .SetInterpolation(tools::GetFaceVaryingInterpDataSource())
+            .SetInterpolation(GetFaceVaryingInterpDataSource())
             .SetRole(
                 HdPrimvarSchema::BuildRoleDataSource(
                     HdPrimvarSchemaTokens->normal))
@@ -391,9 +391,9 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetPrimvarsDataSource() const
         // uvs may or may not be shared by polygons using the same vertices
 
         if (_areUvsPerVertex) {
-            uvBuilder.SetInterpolation(tools::GetVertexInterpDataSource());
+            uvBuilder.SetInterpolation(GetVertexInterpDataSource());
         } else {
-            uvBuilder.SetInterpolation(tools::GetFaceVaryingInterpDataSource());
+            uvBuilder.SetInterpolation(GetFaceVaryingInterpDataSource());
         }
 
         uvBuilder.SetRole(
@@ -439,7 +439,7 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetDataSource() const
 
     if (!_material.IsEmpty()) {
         dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
-        dataSources.push_back(tools::GetMaterialDataSource(_material));
+        dataSources.push_back(GetMaterialDataSource(_material));
     }
 
     return HdRetainedContainerDataSource::New(

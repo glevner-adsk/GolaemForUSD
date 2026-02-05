@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydraTools.h"
+#include "hydraGlobals.h"
 
 #include <pxr/imaging/hd/retainedDataSource.h>
 
@@ -35,8 +35,8 @@ public:
 
     void SetGeometry(
         const glm::Array<PXR_NS::HdSampledDataSource::Time>& shutterOffsets,
-        const tools::DeformedVectors& deformedVertices,
-        const tools::DeformedVectors& deformedNormals,
+        const DeformedVectors& deformedVertices,
+        const DeformedVectors& deformedNormals,
         size_t meshIndex);
 
     PXR_NS::HdContainerDataSourceHandle GetMeshDataSource() const;

@@ -14,11 +14,11 @@ namespace glmhydra {
 
 FileMeshInstance::FileMeshInstance(
     const std::shared_ptr<FileMeshAdapter>& adapter,
-    const SdfPath& material, const tools::PrimvarDSMapRef& customPrimvars)
+    const SdfPath& material, const PrimvarDSMapRef& customPrimvars)
     : _adapter(adapter),
       _material(material),
       _customPrimvars(customPrimvars),
-      _xform(tools::GetIdentityXformDataSource())
+      _xform(GetIdentityXformDataSource())
 {
 }
 
@@ -53,7 +53,7 @@ FileMeshInstance::GetPrimvarsDataSource() const
             HdDataSourceLocator(it.first),
             HdPrimvarSchema::Builder()
             .SetPrimvarValue(it.second)
-            .SetInterpolation(tools::GetConstantInterpDataSource())
+            .SetInterpolation(GetConstantInterpDataSource())
             .Build());
     }
 
@@ -79,7 +79,7 @@ HdContainerDataSourceHandle FileMeshInstance::GetDataSource() const
 
     if (!_material.IsEmpty()) {
         dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
-        dataSources.push_back(tools::GetMaterialDataSource(_material));
+        dataSources.push_back(GetMaterialDataSource(_material));
     }
 
     return HdRetainedContainerDataSource::New(

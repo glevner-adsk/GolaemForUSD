@@ -1,4 +1,4 @@
-#include "hydraTools.h"
+#include "hydraGlobals.h"
 
 #include <pxr/imaging/hd/materialBindingsSchema.h>
 #include <pxr/imaging/hd/primvarSchema.h>
@@ -9,7 +9,6 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace glmhydra {
-namespace tools {
 
 HdContainerDataSourceHandle GetIdentityXformDataSource()
 {
@@ -80,5 +79,4 @@ void CopyGlmVecArrayToVt(
     }
 }
 
-}  // namespace tools
 }  // namespace glmhydra

@@ -36,7 +36,7 @@ namespace glmhydra {
  */
 FurAdapter::FurAdapter(
     FurCache::SP furCachePtr, size_t meshInFurIndex, float scale,
-    const SdfPath& material, const tools::PrimvarDSMapRef& customPrimvars,
+    const SdfPath& material, const PrimvarDSMapRef& customPrimvars,
     float renderPercent, int refineLevel)
     : _furCachePtr(furCachePtr),
       _meshInFurIndex(meshInFurIndex),
@@ -153,7 +153,7 @@ FurAdapter::FurAdapter(
         const glm::Array<glm::Vector3>& glmValues =
             firstGroup._vector3Properties[i];
         VtVec3fArray values;
-        tools::CopyGlmVecArrayToVt(values, glmValues);
+        CopyGlmVecArrayToVt(values, glmValues);
 
         _perCurvePrimvars[TfToken(glmName.c_str())] =
             HdRetainedTypedSampledDataSource<VtVec3fArray>::New(values);
@@ -216,7 +216,7 @@ void FurAdapter::SetGeometry(const glm::Array<glm::Vector3>& deformedVertices)
  */
 void FurAdapter::SetGeometry(
     const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
-    const tools::DeformedVectors& deformedVertices, size_t furIndex)
+    const DeformedVectors& deformedVertices, size_t furIndex)
 {
     const size_t sampleCount = shutterOffsets.size();
     _shutterOffsets.assign(shutterOffsets.begin(), shutterOffsets.end());
@@ -273,7 +273,7 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
                 _shutterOffsets.size(),
                 const_cast<Time*>(_shutterOffsets.data()),
                 const_cast<VtVec3fArray*>(_vertices.data())))
-        .SetInterpolation(tools::GetVertexInterpDataSource())
+        .SetInterpolation(GetVertexInterpDataSource())
         .SetRole(
             HdPrimvarSchema::BuildRoleDataSource(
                 HdPrimvarSchemaTokens->point))
@@ -289,7 +289,7 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
             HdPrimvarSchema::Builder()
             .SetPrimvarValue(
                 HdRetainedTypedSampledDataSource<VtFloatArray>::New(_widths))
-            .SetInterpolation(tools::GetVertexInterpDataSource())
+            .SetInterpolation(GetVertexInterpDataSource())
             .Build();
 
         dataNames.push_back(HdPrimvarsSchemaTokens->widths);
@@ -303,7 +303,7 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
             HdContainerDataSourceHandle dataSource =
                 HdPrimvarSchema::Builder()
                 .SetPrimvarValue(entry.second)
-                .SetInterpolation(tools::GetConstantInterpDataSource())
+                .SetInterpolation(GetConstantInterpDataSource())
                 .Build();
 
             dataNames.push_back(entry.first);
@@ -317,7 +317,7 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
         HdContainerDataSourceHandle dataSource =
             HdPrimvarSchema::Builder()
             .SetPrimvarValue(entry.second)
-            .SetInterpolation(tools::GetUniformInterpDataSource())
+            .SetInterpolation(GetUniformInterpDataSource())
             .Build();
 
         dataNames.push_back(entry.first);
@@ -344,7 +344,7 @@ HdContainerDataSourceHandle FurAdapter::GetDataSource() const
     dataSources.reserve(6);
 
     dataNames.push_back(HdXformSchemaTokens->xform);
-    dataSources.push_back(tools::GetIdentityXformDataSource());
+    dataSources.push_back(GetIdentityXformDataSource());
 
     dataNames.push_back(HdBasisCurvesSchemaTokens->basisCurves);
     dataSources.push_back(GetCurveDataSource());
@@ -354,7 +354,7 @@ HdContainerDataSourceHandle FurAdapter::GetDataSource() const
 
     if (!_material.IsEmpty()) {
         dataNames.push_back(HdMaterialBindingsSchemaTokens->materialBindings);
-        dataSources.push_back(tools::GetMaterialDataSource(_material));
+        dataSources.push_back(GetMaterialDataSource(_material));
     }
 
     if (!_widths.empty()) {

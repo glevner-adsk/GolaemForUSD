@@ -33,7 +33,7 @@
 #include "fileMeshAdapter.h"
 #include "fileMeshInstance.h"
 #include "furAdapter.h"
-#include "hydratools.h"
+#include "hydraGlobals.h"
 
 #include <cmath>
 #include <iostream>
@@ -72,8 +72,8 @@ using glmhydra::FileMeshInstance;
 using glmhydra::FurAdapter;
 using glmhydra::MeshDataSourceBase;
 
-using PrimvarDSMap = glmhydra::tools::PrimvarDSMap;
-using PrimvarDSMapRef = glmhydra::tools::PrimvarDSMapRef;
+using PrimvarDSMap = glmhydra::PrimvarDSMap;
+using PrimvarDSMapRef = glmhydra::PrimvarDSMapRef;
 
 TF_DEBUG_CODES(
     GLMHYDRA_TRACE,
@@ -732,7 +732,7 @@ HdContainerDataSourceHandle GetCubePrimvarsDataSource()
             HdPrimvarsSchemaTokens->points,
             HdPrimvarSchema::Builder()
             .SetPrimvarValue(PointArrayDs::New(points))
-            .SetInterpolation(glmhydra::tools::GetVertexInterpDataSource())
+            .SetInterpolation(glmhydra::GetVertexInterpDataSource())
             .SetRole(HdPrimvarSchema::
                      BuildRoleDataSource(HdPrimvarSchemaTokens->point))
             .Build()
@@ -1299,7 +1299,7 @@ void GolaemProcedural::GenerateGCGMeshes(
         // the same mesh
 
         std::shared_ptr<FileMeshAdapter> adapter;
-        bool isRigid = glmhydra::tools::kEnableRigidEntities
+        bool isRigid = glmhydra::kEnableRigidEntities
             && fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID;
 
         if (isRigid) {

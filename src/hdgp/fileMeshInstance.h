@@ -1,7 +1,7 @@
 #pragma once
 
 #include "fileMeshAdapter.h"
-#include "hydraTools.h"
+#include "hydraGlobals.h"
 #include "meshDataSourceBase.h"
 
 #include <pxr/usd/sdf/path.h>
@@ -23,7 +23,7 @@ public:
     FileMeshInstance(
         const std::shared_ptr<FileMeshAdapter>& adapter,
         const PXR_NS::SdfPath& material,
-        const tools::PrimvarDSMapRef& customPrimvars);
+        const PrimvarDSMapRef& customPrimvars);
 
     void SetTransform(const float pos[3], const float rot[4], float scale);
 
@@ -32,7 +32,7 @@ public:
     PXR_NS::HdContainerDataSourceHandle GetDataSource() const override;
 
     bool HasVariableXform() const override {
-        return tools::kEnableRigidEntities && _adapter->IsRigid();
+        return kEnableRigidEntities && _adapter->IsRigid();
     }
 
 private:
@@ -40,7 +40,7 @@ private:
 
     std::shared_ptr<FileMeshAdapter> _adapter;
     PXR_NS::SdfPath _material;
-    const tools::PrimvarDSMapRef _customPrimvars;
+    const PrimvarDSMapRef _customPrimvars;
     PXR_NS::HdContainerDataSourceHandle _xform;
 };
 

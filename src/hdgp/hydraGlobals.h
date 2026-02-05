@@ -12,7 +12,6 @@
 #include <memory>
 
 namespace glmhydra {
-namespace tools {
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -51,5 +50,4 @@ HdContainerDataSourceHandle GetMaterialDataSource(const SdfPath& material);
 void CopyGlmVecArrayToVt(
     VtVec3fArray& dst, const glm::Array<glm::Vector3>& src);
 
-}  // namespace tools
 }  // namespace glmhydra

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydraTools.h"
+#include "hydraGlobals.h"
 
 #include <glmArray.h>
 #include <glmFurCache.h>
@@ -27,14 +27,14 @@ public:
     FurAdapter(
         glm::crowdio::FurCache::SP furCachePtr, size_t meshInFurIndex,
         float scale, const SdfPath& material,
-        const tools::PrimvarDSMapRef& customPrimvars,
+        const PrimvarDSMapRef& customPrimvars,
         float renderPercent = 100.0f, int refineLevel = 0);
 
     void SetGeometry(const glm::Array<glm::Vector3>& deformedVertices);
 
     void SetGeometry(
         const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
-        const tools::DeformedVectors& deformedVertices, size_t furIndex);
+        const DeformedVectors& deformedVertices, size_t furIndex);
 
     HdContainerDataSourceHandle GetDataSource() const;
 
@@ -43,15 +43,14 @@ private:
 
     HdContainerDataSourceHandle GetCurveDataSource() const;
     HdContainerDataSourceHandle GetPrimvarsDataSource() const;
-    HdContainerDataSourceHandle GetMaterialDataSource() const;
     HdContainerDataSourceHandle GetDisplayStyleDataSource() const;
 
     glm::crowdio::FurCache::SP _furCachePtr;
     size_t _meshInFurIndex;
     int _curveIncr;
     SdfPath _material;
-    const tools::PrimvarDSMapRef _customPrimvars;
-    tools::PrimvarDSMap _perCurvePrimvars;
+    const PrimvarDSMapRef _customPrimvars;
+    PrimvarDSMap _perCurvePrimvars;
     int _refineLevel;
     VtIntArray _vertexCounts;
     VtIntArray _vertexIndices;

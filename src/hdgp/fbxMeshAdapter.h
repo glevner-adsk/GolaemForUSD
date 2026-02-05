@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydraTools.h"
+#include "hydraGlobals.h"
 #include "meshDataSourceBase.h"
 
 #include <pxr/imaging/hd/retainedDataSource.h>
@@ -35,10 +35,10 @@ public:
         glm::crowdio::CrowdFBXCharacter& fbxCharacter, size_t meshIndex,
         const glm::Array<FBXSDK_NAMESPACE::FbxTime>& fbxTimes,
         const glm::Array<PXR_NS::HdSampledDataSource::Time>& shutterOffsets,
-        const tools::DeformedVectors& deformedVertices,
-        const tools::DeformedVectors& deformedNormals,
+        const DeformedVectors& deformedVertices,
+        const DeformedVectors& deformedNormals,
         int meshMaterialIndex, const PXR_NS::SdfPath& material,
-        const tools::PrimvarDSMapRef& customPrimvars);
+        const PrimvarDSMapRef& customPrimvars);
 
     PXR_NS::HdContainerDataSourceHandle GetDataSource() const override;
 
@@ -62,7 +62,7 @@ private:
     bool _areUvsIndexed;
     std::vector<PXR_NS::HdSampledDataSource::Time> _shutterOffsets;
     PXR_NS::SdfPath _material;
-    const tools::PrimvarDSMapRef _customPrimvars;
+    const PrimvarDSMapRef _customPrimvars;
 };
 
 }  // namespace glmhydra

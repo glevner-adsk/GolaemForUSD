@@ -111,8 +111,8 @@ void FileMeshAdapter::SetGeometry(
     _vertices.resize(1);
     _normals.resize(1);
 
-    tools::CopyGlmVecArrayToVt(_vertices[0], deformedVertices);
-    tools::CopyGlmVecArrayToVt(_normals[0], deformedNormals);
+    CopyGlmVecArrayToVt(_vertices[0], deformedVertices);
+    CopyGlmVecArrayToVt(_normals[0], deformedNormals);
 }
 
 /*
@@ -129,8 +129,8 @@ void FileMeshAdapter::SetGeometry(
  */
 void FileMeshAdapter::SetGeometry(
     const glm::Array<Time>& shutterOffsets,
-    const tools::DeformedVectors& deformedVertices,
-    const tools::DeformedVectors& deformedNormals,
+    const DeformedVectors& deformedVertices,
+    const DeformedVectors& deformedNormals,
     size_t meshIndex)
 {
     const size_t sampleCount = shutterOffsets.size();
@@ -146,9 +146,9 @@ void FileMeshAdapter::SetGeometry(
 
     for (size_t i = 0; i < sampleCount; ++i) {
         assert(deformedVertices[i][meshIndex].size() == _totalVertexCount);
-        tools::CopyGlmVecArrayToVt(_vertices[i], deformedVertices[i][meshIndex]);
+        CopyGlmVecArrayToVt(_vertices[i], deformedVertices[i][meshIndex]);
         assert(deformedNormals[i][meshIndex].size() == _totalNormalCount);
-        tools::CopyGlmVecArrayToVt(_normals[i], deformedNormals[i][meshIndex]);
+        CopyGlmVecArrayToVt(_normals[i], deformedNormals[i][meshIndex]);
     }
 }
 
@@ -183,7 +183,7 @@ HdContainerDataSourceHandle FileMeshAdapter::GetPrimvarsDataSource() const
                 _shutterOffsets.size(),
                 const_cast<Time*>(_shutterOffsets.data()),
                 const_cast<VtVec3fArray*>(_vertices.data())))
-        .SetInterpolation(tools::GetVertexInterpDataSource())
+        .SetInterpolation(GetVertexInterpDataSource())
         .SetRole(
             HdPrimvarSchema::BuildRoleDataSource(
                 HdPrimvarSchemaTokens->point))
@@ -220,10 +220,10 @@ HdContainerDataSourceHandle FileMeshAdapter::GetPrimvarsDataSource() const
 
         if (_normalMode ==
             glm::crowdio::GLM_NORMAL_PER_CONTROL_POINT) {
-            normalBuilder.SetInterpolation(tools::GetVertexInterpDataSource());
+            normalBuilder.SetInterpolation(GetVertexInterpDataSource());
         } else {
             normalBuilder.SetInterpolation(
-                tools::GetFaceVaryingInterpDataSource());
+                GetFaceVaryingInterpDataSource());
         }
 
         normalBuilder.SetRole(
@@ -255,9 +255,9 @@ HdContainerDataSourceHandle FileMeshAdapter::GetPrimvarsDataSource() const
 
         if (_uvMode ==
             glm::crowdio::GLM_UV_PER_CONTROL_POINT) {
-            uvBuilder.SetInterpolation(tools::GetVertexInterpDataSource());
+            uvBuilder.SetInterpolation(GetVertexInterpDataSource());
         } else {
-            uvBuilder.SetInterpolation(tools::GetFaceVaryingInterpDataSource());
+            uvBuilder.SetInterpolation(GetFaceVaryingInterpDataSource());
         }
 
         uvBuilder.SetRole(
