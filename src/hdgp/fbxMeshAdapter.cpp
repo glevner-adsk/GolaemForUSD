@@ -165,9 +165,9 @@ FbxMeshAdapter::FbxMeshAdapter(
     // are multiple UV sets, we only take the first)
 
     if (fbxMesh->GetLayerCount(FbxLayerElement::eUV) > 0) {
-        const FbxLayer* layer = fbxMesh->GetLayer(
+        const FbxLayer *layer = fbxMesh->GetLayer(
             fbxMesh->GetLayerTypedIndex(0, FbxLayerElement::eUV));
-        const FbxLayerElementUV* uvElement = layer->GetUVs();
+        const FbxLayerElementUV *uvElement = layer->GetUVs();
 
         _areUvsPerVertex =
             uvElement->GetMappingMode() == FbxLayerElement::eByControlPoint;

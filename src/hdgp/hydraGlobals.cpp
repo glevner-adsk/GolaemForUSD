@@ -67,7 +67,7 @@ HdContainerDataSourceHandle GetMaterialDataSource(const SdfPath& material)
 }
 
 /*
- * Copies a glm::Array of vectors to a VtArray, resizing it as needed.
+ * Copies a glm::Array of 3D vectors to a VtArray, resizing it as needed.
  */
 void CopyGlmVecArrayToVt(
     VtVec3fArray& dst, const glm::Array<glm::Vector3>& src)

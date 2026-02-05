@@ -28,6 +28,29 @@ class FbxTime;
 
 namespace glmhydra {
 
+/*
+ * Class which provides Hydra data sources wrapping an FBX mesh: topology,
+ * geometry, UVs, transformation matrix, etc.
+ *
+ * This class is very much like the FileMeshAdapter/FileMeshInstance classes for
+ * Golaem file meshes, and the FurMeshAdapter class for fur, but with two
+ * differences:
+ *
+ * 1. For FBX meshes, all the work is done in a single class. For Golaem file
+ * meshes, the implementation is separated into two classes for rigid body
+ * support: theoretically, you can have several instances of the same mesh with
+ * different materials and transforms. There is no such support for rigid FBX
+ * meshes.
+ *
+ * 2. Deformed vertices and normals are passed directly to the constructor; you
+ * cannot modify them later as you can for Golaem file meshes and fur. Those
+ * classes were designed so that we could, in theory, keep a cache of them
+ * around and modify just the geometry at each frame. But we don't do that, in
+ * the end, because tests showed it was not faster. And doing the same thing
+ * here would entail keeping around the data structure needed to map deformed
+ * vertices and normals to their positions in our tables (because we only use
+ * the subset associated with a given material and ignore the rest).
+ */
 class FbxMeshAdapter: public MeshDataSourceBase
 {
 public:

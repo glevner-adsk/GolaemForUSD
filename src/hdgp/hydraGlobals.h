@@ -13,22 +13,6 @@
 
 namespace glmhydra {
 
-PXR_NAMESPACE_USING_DIRECTIVE
-
-/*
- * Type of the vector arrays found in glm::crowdio::OutputEntityGeoData. The
- * three dimensions correspond to the index of the frame being computed, the
- * index of the mesh or fur instance, and the index of the vector itself.
- */
-using DeformedVectors = glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
-
-/*
- * A map of custom primvar names to the corresponding data sources, generates
- * from a crowd entity's shader and PP attributes.
- */
-using PrimvarDSMap = TfDenseHashMap<TfToken, HdSampledDataSourceHandle, TfHash>;
-using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
-
 /*
  * If true, rigid mesh entities are treated differently: a single instance of
  * FileMeshAdapter is created for a given rigid mesh, and FileMeshInstance is
@@ -40,14 +24,30 @@ using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
  */
 static const bool kEnableRigidEntities = false;
 
-HdContainerDataSourceHandle GetIdentityXformDataSource();
-HdTokenDataSourceHandle GetConstantInterpDataSource();
-HdTokenDataSourceHandle GetUniformInterpDataSource();
-HdTokenDataSourceHandle GetFaceVaryingInterpDataSource();
-HdTokenDataSourceHandle GetVertexInterpDataSource();
-HdContainerDataSourceHandle GetMaterialDataSource(const SdfPath& material);
+/*
+ * Type of the vector arrays found in glm::crowdio::OutputEntityGeoData. The
+ * three dimensions correspond to the index of the frame being computed, the
+ * index of the mesh or fur instance, and the index of the vector itself.
+ */
+using DeformedVectors = glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
+
+/*
+ * A map of custom primvar names to their corresponding data sources, generated
+ * from a crowd entity's shader and PP attributes.
+ */
+using PrimvarDSMap = PXR_NS::TfDenseHashMap<
+    PXR_NS::TfToken, PXR_NS::HdSampledDataSourceHandle, PXR_NS::TfHash>;
+using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
+
+PXR_NS::HdContainerDataSourceHandle GetIdentityXformDataSource();
+PXR_NS::HdTokenDataSourceHandle GetConstantInterpDataSource();
+PXR_NS::HdTokenDataSourceHandle GetUniformInterpDataSource();
+PXR_NS::HdTokenDataSourceHandle GetFaceVaryingInterpDataSource();
+PXR_NS::HdTokenDataSourceHandle GetVertexInterpDataSource();
+PXR_NS::HdContainerDataSourceHandle GetMaterialDataSource(
+    const PXR_NS::SdfPath& material);
 
 void CopyGlmVecArrayToVt(
-    VtVec3fArray& dst, const glm::Array<glm::Vector3>& src);
+    PXR_NS::VtVec3fArray& dst, const glm::Array<glm::Vector3>& src);
 
 }  // namespace glmhydra

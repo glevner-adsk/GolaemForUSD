@@ -1378,7 +1378,7 @@ void GolaemProcedural::GenerateFBXMeshes(
 {
     glm::crowdio::CrowdFBXCharacter *fbxCharacter = outputData._fbxCharacters[0];
 
-    // fbxTime is needed to accss the FBX mesh node's global transformation
+    // fbxTimes are needed to access the FBX mesh node's global transformation
     // matrix
 
     const glm::crowdio::GeometryBehaviorInfo& behavior = outputData._geoBeInfo;
@@ -1389,12 +1389,13 @@ void GolaemProcedural::GenerateFBXMeshes(
             fbxCharacter->touchFBXScene()->GetGlobalSettings().GetTimeMode();
         double frameRate = FbxTime::GetFrameRate(timeMode);
         for (int isample = 0; isample < shutterOffsets.size(); ++isample) {
-            float (&geoCacheData)[3] =
+            const float (&geoCacheData)[3] =
                 inputData._frameDatas[isample]->
                 _geoBehaviorAnimFrameInfo[behavior._geoDataIndex];
+            float currentFrame = geoCacheData[0];
             fbxTimes[isample].SetGlobalTimeMode(FbxTime::eCustom, frameRate);
             fbxTimes[isample].SetMilliSeconds(
-                static_cast<FbxLongLong>(geoCacheData[0] / frameRate * 1000.0));
+                std::llround(currentFrame / frameRate * 1000.0));
         }
     }
 

@@ -15,8 +15,6 @@
 
 namespace glmhydra {
 
-PXR_NAMESPACE_USING_DIRECTIVE
-
 /*
  * Class which provides data sources for the curves defined by a Golaem
  * FurCache.
@@ -26,39 +24,39 @@ class FurAdapter
 public:
     FurAdapter(
         glm::crowdio::FurCache::SP furCachePtr, size_t meshInFurIndex,
-        float scale, const SdfPath& material,
+        float scale, const PXR_NS::SdfPath& material,
         const PrimvarDSMapRef& customPrimvars,
         float renderPercent = 100.0f, int refineLevel = 0);
 
     void SetGeometry(const glm::Array<glm::Vector3>& deformedVertices);
 
     void SetGeometry(
-        const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
+        const glm::Array<PXR_NS::HdSampledDataSource::Time>& shutterOffsets,
         const DeformedVectors& deformedVertices, size_t furIndex);
 
-    HdContainerDataSourceHandle GetDataSource() const;
+    PXR_NS::HdContainerDataSourceHandle GetDataSource() const;
 
 private:
     void CopyVertices(size_t shutterIndex, const glm::Array<glm::Vector3>& src);
 
-    HdContainerDataSourceHandle GetCurveDataSource() const;
-    HdContainerDataSourceHandle GetPrimvarsDataSource() const;
-    HdContainerDataSourceHandle GetDisplayStyleDataSource() const;
+    PXR_NS::HdContainerDataSourceHandle GetCurveDataSource() const;
+    PXR_NS::HdContainerDataSourceHandle GetPrimvarsDataSource() const;
+    PXR_NS::HdContainerDataSourceHandle GetDisplayStyleDataSource() const;
 
     glm::crowdio::FurCache::SP _furCachePtr;
     size_t _meshInFurIndex;
     int _curveIncr;
-    SdfPath _material;
+    PXR_NS::SdfPath _material;
     const PrimvarDSMapRef _customPrimvars;
     PrimvarDSMap _perCurvePrimvars;
     int _refineLevel;
-    VtIntArray _vertexCounts;
-    VtIntArray _vertexIndices;
-    std::vector<VtVec3fArray> _vertices;
-    VtFloatArray _widths;
-    VtVec2fArray _uvs;
-    TfToken _curveDegree;
-    std::vector<HdSampledDataSource::Time> _shutterOffsets;
+    PXR_NS::VtIntArray _vertexCounts;
+    PXR_NS::VtIntArray _vertexIndices;
+    std::vector<PXR_NS::VtVec3fArray> _vertices;
+    PXR_NS::VtFloatArray _widths;
+    PXR_NS::VtVec2fArray _uvs;
+    PXR_NS::TfToken _curveDegree;
+    std::vector<PXR_NS::HdSampledDataSource::Time> _shutterOffsets;
 };
 
 }  // namespace glmhydra
