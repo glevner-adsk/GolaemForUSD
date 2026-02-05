@@ -11,8 +11,6 @@
 
 namespace glmhydra {
 
-PXR_NAMESPACE_USING_DIRECTIVE
-
 /*
  * Adds xform, material and custom primvar data sources to the data sources for
  * a mesh's topology and geometry (provided by FileMeshAdapter). This class is
@@ -24,25 +22,26 @@ class FileMeshInstance: public MeshDataSourceBase
 public:
     FileMeshInstance(
         const std::shared_ptr<FileMeshAdapter>& adapter,
-        const SdfPath& material, const tools::PrimvarDSMapRef& customPrimvars);
+        const PXR_NS::SdfPath& material,
+        const tools::PrimvarDSMapRef& customPrimvars);
 
     void SetTransform(const float pos[3], const float rot[4], float scale);
 
     // TODO: variant of SetTransform() with shutter offsets
 
-    HdContainerDataSourceHandle GetDataSource() const override;
+    PXR_NS::HdContainerDataSourceHandle GetDataSource() const override;
 
-    bool IsRigid() const override {
-        return _adapter->IsRigid();
+    bool HasVariableXform() const override {
+        return tools::kEnableRigidEntities && _adapter->IsRigid();
     }
 
 private:
-    HdContainerDataSourceHandle GetPrimvarsDataSource() const;
+    PXR_NS::HdContainerDataSourceHandle GetPrimvarsDataSource() const;
 
     std::shared_ptr<FileMeshAdapter> _adapter;
-    SdfPath _material;
+    PXR_NS::SdfPath _material;
     const tools::PrimvarDSMapRef _customPrimvars;
-    HdContainerDataSourceHandle _xform;
+    PXR_NS::HdContainerDataSourceHandle _xform;
 };
 
 }  // namespace glmhydra

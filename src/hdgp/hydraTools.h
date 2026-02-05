@@ -6,7 +6,6 @@
 #include <pxr/imaging/hd/dataSource.h>
 #include <pxr/imaging/hd/dataSourceTypeDefs.h>
 #include <pxr/usd/sdf/path.h>
-#include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/tf/denseHashMap.h>
 #include <pxr/base/vt/array.h>
 
@@ -30,6 +29,17 @@ using DeformedVectors = glm::Array<glm::Array<glm::Array<glm::Vector3>>>;
  */
 using PrimvarDSMap = TfDenseHashMap<TfToken, HdSampledDataSourceHandle, TfHash>;
 using PrimvarDSMapRef = std::shared_ptr<PrimvarDSMap>;
+
+/*
+ * If true, rigid mesh entities are treated differently: a single instance of
+ * FileMeshAdapter is created for a given rigid mesh, and FileMeshInstance is
+ * used to add different materials, transforation matrices and custom primvars
+ * for each instance.
+ *
+ * For now, though, this is disabled, because I don't know how to calculate the
+ * transformation matrix for a mesh.
+ */
+static const bool kEnableRigidEntities = false;
 
 HdContainerDataSourceHandle GetIdentityXformDataSource();
 HdTokenDataSourceHandle GetConstantInterpDataSource();

@@ -18,8 +18,6 @@
 
 namespace glmhydra {
 
-PXR_NAMESPACE_USING_DIRECTIVE
-
 /*
  * Class which provides Hydra data sources wrapping the topology and UVs found
  * in a GlmFileMesh, as well as the deformed vertices and normals at any given
@@ -36,35 +34,31 @@ public:
         const glm::Array<glm::Vector3>& deformedNormals);
 
     void SetGeometry(
-        const glm::Array<HdSampledDataSource::Time>& shutterOffsets,
+        const glm::Array<PXR_NS::HdSampledDataSource::Time>& shutterOffsets,
         const tools::DeformedVectors& deformedVertices,
         const tools::DeformedVectors& deformedNormals,
         size_t meshIndex);
 
-    HdContainerDataSourceHandle GetMeshDataSource() const;
-    HdContainerDataSourceHandle GetPrimvarsDataSource() const;
+    PXR_NS::HdContainerDataSourceHandle GetMeshDataSource() const;
+    PXR_NS::HdContainerDataSourceHandle GetPrimvarsDataSource() const;
 
     bool IsRigid() const {
         return _isRigid;
     }
 
 private:
-    using IntArrayDS = HdRetainedTypedSampledDataSource<VtIntArray>;
-    using Vec3fArrayDS = HdRetainedTypedMultisampledDataSource<VtVec3fArray>;
-    using Vec2fArrayDS = HdRetainedTypedSampledDataSource<VtVec2fArray>;
-
-    VtIntArray _vertexCounts;
-    VtIntArray _vertexIndices;
+    PXR_NS::VtIntArray _vertexCounts;
+    PXR_NS::VtIntArray _vertexIndices;
     size_t _totalVertexCount;
-    std::vector<VtVec3fArray> _vertices;
-    VtIntArray _normalIndices;
+    std::vector<PXR_NS::VtVec3fArray> _vertices;
+    PXR_NS::VtIntArray _normalIndices;
     glm::crowdio::GlmNormalMode _normalMode;
     size_t _totalNormalCount;
-    std::vector<VtVec3fArray> _normals;
-    VtIntArray _uvIndices;
+    std::vector<PXR_NS::VtVec3fArray> _normals;
+    PXR_NS::VtIntArray _uvIndices;
     glm::crowdio::GlmUVMode _uvMode;
-    VtVec2fArray _uvs;
-    std::vector<HdSampledDataSource::Time> _shutterOffsets;
+    PXR_NS::VtVec2fArray _uvs;
+    std::vector<PXR_NS::HdSampledDataSource::Time> _shutterOffsets;
     bool _isRigid;
 };
 

@@ -16,10 +16,7 @@ public:
     virtual ~MeshDataSourceBase() {}
 
     virtual PXR_NS::HdContainerDataSourceHandle GetDataSource() const = 0;
-
-    virtual bool IsRigid() const {
-        return false;
-    }
+    virtual bool HasVariableXform() const = 0;
 };
 
 }  // namespace glmhydra

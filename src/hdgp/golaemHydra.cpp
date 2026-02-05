@@ -112,17 +112,6 @@ TF_DEFINE_PRIVATE_TOKENS(
 );
 
 /*
- * If true, rigid mesh entities are treated differently: a single instance of
- * FileMeshAdapter is created for a given rigid mesh, and FileMeshInstance is
- * used to add different materials, transforation matrices and custom primvars
- * for each instance.
- *
- * For now, though, this is disabled, because I don't know how to calculate the
- * transformation matrix for a mesh.
- */
-const bool kEnableRigidEntities = false;
-
-/*
  * We use a hash map to store an entity's custom primvars (name and data source
  * for each), which are generated from shader attributes and PP attributes.
  */
@@ -287,8 +276,7 @@ private:
         const glm::crowdio::OutputEntityGeoData& outputData,
         const PrimvarDSMapRef& customPrimvars);
     void GenerateFBXMeshes(
-        MeshEntityData& meshEntityData, const GlmFrameData *frameData,
-        const glm::Array<Time>& shutterOffsets,
+        MeshEntityData& meshEntityData, const glm::Array<Time>& shutterOffsets,
         const glm::crowdio::InputEntityGeoData& inputData,
         const glm::crowdio::OutputEntityGeoData& outputData,
         const PrimvarDSMapRef& customPrimvars);
@@ -1229,8 +1217,8 @@ void GolaemProcedural::GenerateMeshesAndFur(
         break;
     case glm::crowdio::GeometryType::FBX:
         GenerateFBXMeshes(
-            meshEntityData, frameData, shutterOffsets,
-            inputData, outputData, customPrimvars);
+            meshEntityData, shutterOffsets, inputData, outputData,
+            customPrimvars);
         break;
     default:
         return;
@@ -1311,7 +1299,7 @@ void GolaemProcedural::GenerateGCGMeshes(
         // the same mesh
 
         std::shared_ptr<FileMeshAdapter> adapter;
-        bool isRigid = kEnableRigidEntities
+        bool isRigid = glmhydra::tools::kEnableRigidEntities
             && fileMesh._skinningType == glm::crowdio::GLM_SKIN_RIGID;
 
         if (isRigid) {
@@ -1364,6 +1352,9 @@ void GolaemProcedural::GenerateGCGMeshes(
                 + simData->_iBoneOffsetPerEntityType[entityType]
                 + simData->_indexInEntityType[entityIndex] * boneCount;
 
+            // TODO: if rigid body support is enabled one day, implement a
+            // variant of SetTransform() with multiple samples for motion blur
+
             instance->SetTransform(
                 frameData->_bonePositions[frameDataIndex],
                 frameData->_boneOrientations[frameDataIndex],
@@ -1379,7 +1370,7 @@ void GolaemProcedural::GenerateGCGMeshes(
  * adds them to the MeshEntityData's meshes vector.
  */
 void GolaemProcedural::GenerateFBXMeshes(
-    MeshEntityData& meshEntityData, const GlmFrameData *frameData,
+    MeshEntityData& meshEntityData,
     const glm::Array<Time>& shutterOffsets,
     const glm::crowdio::InputEntityGeoData& inputData,
     const glm::crowdio::OutputEntityGeoData& outputData,
@@ -1387,20 +1378,24 @@ void GolaemProcedural::GenerateFBXMeshes(
 {
     glm::crowdio::CrowdFBXCharacter *fbxCharacter = outputData._fbxCharacters[0];
 
-    // not sure why we need fbxTime, but we do...
+    // fbxTime is needed to accss the FBX mesh node's global transformation
+    // matrix
 
     const glm::crowdio::GeometryBehaviorInfo& behavior = outputData._geoBeInfo;
-    FbxTime fbxTime;
+    glm::Array<FbxTime> fbxTimes(shutterOffsets.size());
 
     if (behavior._idGeometryFileIdx >= 0) {
-        float (&geoCacheData)[3] =
-            frameData->_geoBehaviorAnimFrameInfo[behavior._geoDataIndex];
         FbxTime::EMode timeMode =
             fbxCharacter->touchFBXScene()->GetGlobalSettings().GetTimeMode();
         double frameRate = FbxTime::GetFrameRate(timeMode);
-        fbxTime.SetGlobalTimeMode(FbxTime::eCustom, frameRate);
-        fbxTime.SetMilliSeconds(
-            static_cast<FbxLongLong>(geoCacheData[0] / frameRate * 1000.0));
+        for (int isample = 0; isample < shutterOffsets.size(); ++isample) {
+            float (&geoCacheData)[3] =
+                inputData._frameDatas[isample]->
+                _geoBehaviorAnimFrameInfo[behavior._geoDataIndex];
+            fbxTimes[isample].SetGlobalTimeMode(FbxTime::eCustom, frameRate);
+            fbxTimes[isample].SetMilliSeconds(
+                static_cast<FbxLongLong>(geoCacheData[0] / frameRate * 1000.0));
+        }
     }
 
     // construct an instance of FbxMeshAdapter to generate Hydra data sources
@@ -1416,7 +1411,7 @@ void GolaemProcedural::GenerateFBXMeshes(
         meshEntityData.meshes.emplace_back(
             std::make_shared<FbxMeshAdapter>(
                 *fbxCharacter, outputData._meshAssetNameIndices[imesh],
-                fbxTime, shutterOffsets,
+                fbxTimes, shutterOffsets,
                 outputData._deformedVertices, outputData._deformedNormals,
                 outputData._meshAssetMaterialIndices[imesh],
                 material, customPrimvars));
@@ -1616,9 +1611,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                         HdPrimvarsSchema::GetPointsLocator(),
                         HdPrimvarsSchema::GetNormalsLocator()
                     };
-                    bool isRigid = kEnableRigidEntities
-                        && entity.meshes[j]->IsRigid();
-                    if (isRigid) {
+                    if (entity.meshes[j]->HasVariableXform()) {
                         locators.append(HdXformSchema::GetDefaultLocator());
                     }
                     outputDirtiedPrims->emplace_back(childPath, locators);

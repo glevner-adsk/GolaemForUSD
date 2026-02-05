@@ -12,6 +12,10 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 using Time = HdSampledDataSource::Time;
 
+using IntArrayDS = HdRetainedTypedSampledDataSource<VtIntArray>;
+using Vec3fArrayDS = HdRetainedTypedMultisampledDataSource<VtVec3fArray>;
+using Vec2fArrayDS = HdRetainedTypedSampledDataSource<VtVec2fArray>;
+
 TF_DEFINE_PRIVATE_TOKENS(
     fileMeshAdapterTokens,
     (st)

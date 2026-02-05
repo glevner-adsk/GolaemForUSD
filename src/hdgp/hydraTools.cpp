@@ -4,6 +4,7 @@
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 #include <pxr/imaging/hd/xformSchema.h>
+#include <pxr/base/gf/matrix4d.h>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 

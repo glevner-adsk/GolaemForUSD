@@ -17,6 +17,10 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 using Time = HdSampledDataSource::Time;
 
+using IntArrayDS = HdRetainedTypedSampledDataSource<VtIntArray>;
+using Vec3fArrayDS = HdRetainedTypedMultisampledDataSource<VtVec3fArray>;
+using Vec2fArrayDS = HdRetainedTypedSampledDataSource<VtVec2fArray>;
+
 TF_DEFINE_PRIVATE_TOKENS(
     fbxMeshAdapterTokens,
     (st)
@@ -26,25 +30,36 @@ namespace glmhydra {
 
 FbxMeshAdapter::FbxMeshAdapter(
     glm::crowdio::CrowdFBXCharacter& fbxCharacter, size_t meshIndex,
-    const FbxTime& fbxTime, const glm::Array<Time>& shutterOffsets,
+    const glm::Array<FbxTime>& fbxTimes, const glm::Array<Time>& shutterOffsets,
     const tools::DeformedVectors& deformedVertices,
     const tools::DeformedVectors& deformedNormals,
     int meshMaterialIndex, const SdfPath& material,
     const tools::PrimvarDSMapRef& customPrimvars)
-    : _shutterOffsets(shutterOffsets.begin(), shutterOffsets.end()),
+    : _xforms(shutterOffsets.size()),
+      _shutterOffsets(shutterOffsets.begin(), shutterOffsets.end()),
       _areUvsPerVertex(false),
       _areUvsIndexed(false),
       _material(material),
       _customPrimvars(customPrimvars)
 {
-    // fetch the transformation matrix for this mesh
+    size_t sampleCount = shutterOffsets.size();
 
-    FbxAMatrix nodeTransform, geomTransform;
+    // fetch the transformation matrix for this mesh at each time sample
+
     FbxNode *fbxNode = fbxCharacter.getCharacterFBXMeshes()[meshIndex];
-
-    fbxCharacter.getMeshGlobalTransform(nodeTransform, fbxNode, fbxTime);
+    FbxAMatrix geomTransform;
     glm::crowdio::CrowdFBXBaker::getGeomTransform(geomTransform, fbxNode);
-    nodeTransform *= geomTransform;
+
+    for (int isample = 0; isample < sampleCount; ++isample) {
+        FbxAMatrix xform;
+        fbxCharacter.getMeshGlobalTransform(xform, fbxNode, fbxTimes[isample]);
+        xform *= geomTransform;
+        _xforms[isample].Set(
+            xform[0][0], xform[0][1], xform[0][2], xform[0][3],
+            xform[1][0], xform[1][1], xform[1][2], xform[1][3],
+            xform[2][0], xform[2][1], xform[2][2], xform[2][3],
+            xform[3][0], xform[3][1], xform[3][2], xform[3][3]);
+    }
 
     // polygons bound to a different material are ignored, meaning some number
     // of vertices may be superfluous, so we construct a map of original vertex
@@ -106,7 +121,6 @@ FbxMeshAdapter::FbxMeshAdapter(
 
     // for each time sample, copy the deformed vertices we need
 
-    size_t sampleCount = shutterOffsets.size();
     _vertices.resize(sampleCount);
 
     for (size_t i = 0; i < sampleCount; ++i) {
@@ -117,13 +131,7 @@ FbxMeshAdapter::FbxMeshAdapter(
         for (int ivert = 0; ivert < allVertexCount; ++ivert) {
             int myIndex = vertexMap[ivert];
             if (myIndex >= 0) {
-                const glm::Vector3& glmVect = src[ivert];
-                FbxVector4 fbxVect(glmVect.x, glmVect.y, glmVect.z);
-                fbxVect = nodeTransform.MultT(fbxVect);
-                dst[myIndex].Set(
-                    static_cast<float>(fbxVect[0]),
-                    static_cast<float>(fbxVect[1]),
-                    static_cast<float>(fbxVect[2]));
+                dst[myIndex].Set(src[ivert].getFloatValues());
             }
         }
     }
@@ -132,10 +140,6 @@ FbxMeshAdapter::FbxMeshAdapter(
     // always per polygon vertex)
 
     if (fbxLayer0 && fbxLayer0->GetNormals()) {
-        FbxAMatrix globalRotate;
-        globalRotate.SetIdentity();
-        globalRotate.SetR(nodeTransform.GetR());
-
         _normals.resize(sampleCount);
 
         for (size_t i = 0; i < sampleCount; ++i) {
@@ -150,13 +154,7 @@ FbxMeshAdapter::FbxMeshAdapter(
                     inputIndex += nvert;
                 } else {
                     for (int ivert = 0; ivert < nvert; ++ivert) {
-                        const glm::Vector3& glmVect = src[inputIndex++];
-                        FbxVector4 fbxVect(glmVect.x, glmVect.y, glmVect.z);
-                        fbxVect = globalRotate.MultT(fbxVect);
-                        dst.emplace_back(
-                            static_cast<float>(fbxVect[0]),
-                            static_cast<float>(fbxVect[1]),
-                            static_cast<float>(fbxVect[2]));
+                        dst.emplace_back(src[inputIndex++].getFloatValues());
                     }
                 }
             }
@@ -299,6 +297,17 @@ FbxMeshAdapter::FbxMeshAdapter(
     }
 }
 
+HdContainerDataSourceHandle FbxMeshAdapter::GetXformDataSource() const
+{
+    return HdXformSchema::Builder()
+        .SetMatrix(
+            HdRetainedTypedMultisampledDataSource<GfMatrix4d>::New(
+                _shutterOffsets.size(),
+                const_cast<Time*>(_shutterOffsets.data()),
+                const_cast<GfMatrix4d*>(_xforms.data())))
+        .Build();
+}
+
 HdContainerDataSourceHandle FbxMeshAdapter::GetMeshDataSource() const
 {
     return HdMeshSchema::Builder()
@@ -420,7 +429,7 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetDataSource() const
     dataSources.reserve(4);
 
     dataNames.push_back(HdXformSchemaTokens->xform);
-    dataSources.push_back(tools::GetIdentityXformDataSource());
+    dataSources.push_back(GetXformDataSource());
 
     dataNames.push_back(HdMeshSchemaTokens->mesh);
     dataSources.push_back(GetMeshDataSource());
