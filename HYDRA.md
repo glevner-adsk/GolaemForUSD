@@ -72,20 +72,27 @@ rendering with the "free" camera, not an actual camera.
 Motion Blur
 -----------
 
-GolaemHydra supports motion blur, if the `primvars:enableMotionBlur` attribute
-is set to true, but it can be tricky to get the renderer to perform motion blur.
+GolaemHydra activates motion blur if the `primvars:enableMotionBlur` attribute
+is set to true. In that case, GolaemHydra searches for the motion blur shutter
+interval in three places, and in the following order:
 
-GolaemHydra activates motion blur when a camera shutter interval is defined. It
-can be defined in one of two places: in the Hydra render settings, or by the
-primary camera's `shutter:open` and `shutter:close` attributes. If the shutter
-interval is undefined, or if the open and close attributes are equal, motion
-blur is not activated.
+- the Hydra render settings;
+- the primary camera's `shutter:open` and `shutter:close` attributes;
+- the plugin's `primvars:defaultShutterOpen` and `primvars:defaultShutterClose`
+  attributes.
 
-GolaemHydra looks for the camera shutter interval in both those places, but the
-renderer delegate may prefer one or the other. In our experience with usdview
-and the RenderMan XPU render delegate, the render settings are ignored; the
-camera's shutter settings are also ignored unless you set them interactively, in
-usdview's Python interpreter window.
+That is, if GolaemHydra cannot find any render settings or a primary camera in
+the Hydra scene index, it falls back on the default shutter interval. If the
+resulting shutter interval is infinitely small (_i.e._ the open and close
+attributes are equal), then motion blur is not activated.
+
+So activating motion blur in GolaemHydra is quite simple, but it can be tricky
+to get the renderer to follow. The render delegate should look in the render
+settings and in the primary camera, but it may prefer one or the other, and it
+may not look at either. In our experience with usdview and the RenderMan XPU
+render delegate, the render settings are ignored; the camera's shutter settings
+are also ignored unless you set them interactively, in usdview's Python
+interpreter window.
 
 Note that the Storm render delegate does not support motion blur.
 
@@ -139,6 +146,8 @@ Animating their values, or changing them interactively, will have no effect.
 | primvars:materialPath        | token | "Materials"      |
 | primvars:materialAssignMode  | token | "byShadingGroup" |
 | primvars:enableMotionBlur    | bool  | false            |
+| primvars:defaultShutterOpen  | float | 0                |
+| primvars:defaultShutterClose | float | 1                |
 | primvars:enableLod           | bool  | false            |
 | primvars:enableFur           | bool  | false            |
 | primvars:furRenderPercent    | float | 100              |
@@ -240,8 +249,16 @@ Animating their values, or changing them interactively, will have no effect.
 
 - primvars:enableMotionBlur
 
-    If true, and if a camera shutter interval has been defined, motion blur is
+    If true, and if a valid camera shutter interval is defined, motion blur is
     activated. See [Motion Blur](#motion-blur) for details.
+
+- primvars:defaultShutterOpen
+- primvars:defaultShutterClose
+
+    Together, these attributes define the default shutter interval used to
+    compute motion blur, if that interval is not defined by the render settings
+    or the primary camera. They are offsets relative to the current frame. See
+    [Motion Blur](#motion-blur) for details.
 
 - primvars:enableLod
 

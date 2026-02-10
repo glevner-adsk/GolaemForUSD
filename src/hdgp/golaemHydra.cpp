@@ -100,6 +100,8 @@ TF_DEFINE_PRIVATE_TOKENS(
     (materialPath)
     (materialAssignMode)
     (enableMotionBlur)
+    (defaultShutterOpen)
+    (defaultShutterClose)
     (enableLod)
     (enableFur)
     (furRenderPercent)
@@ -132,6 +134,8 @@ struct Args
           geometryTag(0),
           materialAssignMode(golaemTokens->byShadingGroup),
           enableMotionBlur(false),
+          defaultShutterOpen(0),
+          defaultShutterClose(1),
           enableLod(false),
           enableFur(false),
           furRenderPercent(100),
@@ -153,6 +157,8 @@ struct Args
     SdfPath materialPath;
     TfToken materialAssignMode;
     bool enableMotionBlur;
+    float defaultShutterOpen;
+    float defaultShutterClose;
     bool enableLod;
     bool enableFur;
     float furRenderPercent;
@@ -258,15 +264,16 @@ public:
         const HdSceneIndexBaseRefPtr& inputScene,
         const SdfPath &childPrimPath) override;
 
-    bool AsyncBegin(bool asyncEnabled) override
+    bool AsyncBegin(bool /*asyncEnabled*/) override
     {
         return false;
     }
 
     AsyncState AsyncUpdate(
-        const ChildPrimTypeMap &previousResult,
-        ChildPrimTypeMap *outputPrimTypes,
-        HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims) override
+        const ChildPrimTypeMap& /*previousResult*/,
+        ChildPrimTypeMap* /*outputPrimTypes*/,
+        HdSceneIndexObserver::DirtiedPrimEntries* /*outputDirtiedPrims*/)
+        override
      {
          return Finished;
      }
@@ -428,6 +435,10 @@ Args GolaemProcedural::GetArgs(const HdSceneIndexBaseRefPtr& inputScene)
         primvars, golaemTokens->materialAssignMode, result.materialAssignMode);
     GetTypedPrimvar(
         primvars, golaemTokens->enableMotionBlur, result.enableMotionBlur);
+    GetTypedPrimvar(
+        primvars, golaemTokens->defaultShutterOpen, result.defaultShutterOpen);
+    GetTypedPrimvar(
+        primvars, golaemTokens->defaultShutterClose, result.defaultShutterClose);
     GetTypedPrimvar(
         primvars, golaemTokens->enableLod, result.enableLod);
     GetTypedPrimvar(
@@ -812,14 +823,19 @@ void GolaemProcedural::PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene)
                 GLMHYDRA_MOTION_BLUR,
                 "[GolaemHydra] motion blur shutter from render settings: %g %g\n",
                 shutter[0], shutter[1]);
-            motionBlur = (shutter[0] < shutter[1]);
         } else if (GetShutterFromCamera(inputScene, &shutter)) {
             TF_DEBUG_MSG(
                 GLMHYDRA_MOTION_BLUR,
                 "[GolaemHydra] motion blur shutter from camera: %g %g\n",
                 shutter[0], shutter[1]);
-            motionBlur = (shutter[0] < shutter[1]);
+        } else {
+            shutter.Set(_args.defaultShutterOpen, _args.defaultShutterClose);
+            TF_DEBUG_MSG(
+                GLMHYDRA_MOTION_BLUR,
+                "[GolaemHydra] using default motion blur shutter: %g %g\n",
+                shutter[0], shutter[1]);
         }
+        motionBlur = (shutter[0] < shutter[1]);
     }
 
     // iterate over entities in crowd fields
