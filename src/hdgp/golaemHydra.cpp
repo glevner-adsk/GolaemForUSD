@@ -142,40 +142,56 @@ struct Args
           furRefineLevel(0)
         {}
 
+    enum ArgChanges {
+        // no arguments have changed
+        kNoChanges,
+        // only unimportant arguments have changed
+        kUnimportantChanges,
+        // fur topology or refine level may change, but no kReload changes
+        kFurChanges,
+        // InitCrowd() will have to be called to reload cache, characters, etc.
+        kReload
+    };
+
     /*
-     * Returns true if any arguments in other differ from these arguments.
+     * Compares the arguments in other to these arguments and returns an
+     * indicator of what has changed.
      */
-    bool compare(const Args& other) const
+    int compare(const Args& other) const
     {
-#define CMP(var) \
-        if (var != other.var) { \
-            TF_DEBUG_MSG( \
-                GLMHYDRA_TRACE, \
+        int ret = kNoChanges;
+
+#define CMP(var, importance)                                    \
+        if (var != other.var) {                                 \
+            TF_DEBUG_MSG(                                       \
+                GLMHYDRA_TRACE,                                 \
                 "[GolaemHydra] attribute changed: " #var "\n"); \
-            return false; \
+            ret = std::max(ret, static_cast<int>(importance));  \
         }
-        CMP(crowdFields);
-        CMP(cacheName);
-        CMP(cacheDir);
-        CMP(characterFiles);
-        CMP(entityIds);
-        CMP(enableLayout);
-        CMP(layoutFiles);
-        CMP(terrainFile);
-        CMP(renderPercent);
-        CMP(displayMode);
-        CMP(geometryTag);
-        CMP(dirmap);
-        CMP(materialPath);
-        CMP(materialAssignMode);
-        CMP(enableMotionBlur);
-        CMP(defaultShutterOpen);
-        CMP(defaultShutterClose);
-        CMP(enableLod);
-        CMP(enableFur);
-        CMP(furRenderPercent);
-        CMP(furRefineLevel);
-        return true;
+
+        CMP(crowdFields, kReload);
+        CMP(cacheName, kReload);
+        CMP(cacheDir, kReload);
+        CMP(characterFiles, kReload);
+        CMP(entityIds, kUnimportantChanges);
+        CMP(enableLayout, kReload);
+        CMP(layoutFiles, kReload);
+        CMP(terrainFile, kReload);
+        CMP(renderPercent, kUnimportantChanges);
+        CMP(displayMode, kUnimportantChanges);
+        CMP(geometryTag, kUnimportantChanges);
+        CMP(dirmap, kReload);
+        CMP(materialPath, kUnimportantChanges);
+        CMP(materialAssignMode, kUnimportantChanges);
+        CMP(enableMotionBlur, kUnimportantChanges);
+        CMP(defaultShutterOpen, kUnimportantChanges);
+        CMP(defaultShutterClose, kUnimportantChanges);
+        CMP(enableLod, kUnimportantChanges);
+        CMP(enableFur, kUnimportantChanges);
+        CMP(furRenderPercent, kFurChanges);
+        CMP(furRefineLevel, kFurChanges);
+
+        return ret;
     }
 
     VtTokenArray crowdFields;
@@ -1599,39 +1615,63 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         TfDebug::Helper().Msg(strm.str());
     }
 
-    // Fetch arguments (primvars), then (re)populate the scene. For now, if any
-    // arguments change from one update to the next, we assume that the whole
-    // scene must be regenerated. But we could be more discerning.
+    // Fetch arguments (primvars) and see if any have changed since the last
+    // update. Note that most changes to the arguments don't require us to do
+    // anything in particular, because PopulateCrowd() and then GetChildPrim()
+    // regenerate all the Hydra prims anyway. Most of the time, all we need to
+    // do is to tell Hydra how each prim may have changed.
 
     Args newArgs = GetArgs(inputScene, _GetProceduralPrimPath());
     bool updateAll = false;
+    bool updateFur = false;
 
-    if (_updateCount == 0 || !newArgs.compare(_args)) {
+    if (_updateCount == 0) {
         _args = newArgs;
-        if (_updateCount > 0) {
-            _factory->clear(glm::crowdio::FactoryClearMode::ALL);
-            updateAll = true;
+        updateAll = true;
+    } else {
+        int changes = newArgs.compare(_args);
+        if (changes != Args::kNoChanges) {
+            _args = newArgs;
+            switch (changes) {
+            case Args::kFurChanges:
+                updateFur = true;
+                break;
+            case Args::kReload:
+                _factory->clear(glm::crowdio::FactoryClearMode::ALL);
+                updateAll = true;
+                break;
+            }
         }
+    }
+    ++_updateCount;
+
+    // the first time, or if any important attributes have changed, start over,
+    // loading the cache, character files, layout and terrain files, etc.
+
+    if (updateAll) {
         _dirmapRules = glm::stringToStringArray(_args.dirmap.GetString(), ";");
         findDirmappedFile(
             _mappedCacheDir, _args.cacheDir.GetString(), _dirmapRules);
         InitCrowd(inputScene);
     }
 
-    ++_updateCount;
+    // repopulate the scene (_bboxEntities or _meshEntities, depending on the
+    // display mode)
+
     PopulateCrowd(inputScene);
 
     ChildPrimTypeMap result;
     SdfPath myPath = _GetProceduralPrimPath();
     char buffer[128];
 
+    _childIndices.clear();
+    _childIndexPairs.clear();
+
     // bbox display mode
 
     if (_args.displayMode == golaemTokens->bbox) {
 
         // generate a prim for each entity in the crowd
-
-        _childIndices.clear();
 
         for (size_t i = 0; i < _bboxEntities.size(); ++i) {
             std::snprintf(buffer, sizeof(buffer), "c%zu", i);
@@ -1655,8 +1695,6 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 
         // generate a prim for each mesh for each entity
 
-        _childIndexPairs.clear();
-
         for (size_t i = 0; i < _meshEntities.size(); ++i) {
             const MeshEntityData& entity = _meshEntities[i];
 
@@ -1665,8 +1703,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
             // successive updates, only the points, normals and extent will have
             // changed (not the topology)
 
-            // a group node that provides the extent for all the meshes beneath
-            // it
+            // a group node that provides the extent for all the meshes below it
 
             std::snprintf(
                 buffer, sizeof(buffer), "c%ue%zul%u",
@@ -1717,7 +1754,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 
                 if (previousResult.size() > 0) {
                     outputDirtiedPrims->emplace_back(
-                        childPath, updateAll
+                        childPath, updateAll || updateFur
                         ? HdDataSourceLocatorSet::UniversalSet()
                         : HdPrimvarsSchema::GetPointsLocator());
                 }
