@@ -255,8 +255,21 @@ public:
         HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims) override;
 
     HdSceneIndexPrim GetChildPrim(
-        const HdSceneIndexBaseRefPtr& /*inputScene*/,
+        const HdSceneIndexBaseRefPtr& inputScene,
         const SdfPath &childPrimPath) override;
+
+    bool AsyncBegin(bool asyncEnabled) override
+    {
+        return false;
+    }
+
+    AsyncState AsyncUpdate(
+        const ChildPrimTypeMap &previousResult,
+        ChildPrimTypeMap *outputPrimTypes,
+        HdSceneIndexObserver::DirtiedPrimEntries *outputDirtiedPrims) override
+     {
+         return Finished;
+     }
 
 private:
     Args GetArgs(const HdSceneIndexBaseRefPtr& inputScene);
@@ -528,7 +541,14 @@ double GetCurrentFrame(const HdSceneIndexBaseRefPtr& inputScene)
         HdSceneGlobalsSchema::GetFromSceneIndex(inputScene);
 
     if (globals) {
-        frame = globals.GetCurrentFrame()->GetTypedValue(0);
+        HdDoubleDataSourceHandle frameDS = globals.GetCurrentFrame();
+        if (frameDS) {
+            frame = frameDS->GetTypedValue(0);
+            if (std::isnan(frame)) {
+                std::cerr << "[GolaemHydra] changing current frame NAN to 0!\n";
+                frame = 0;
+            }
+        }
     }
 
     return frame;
@@ -584,7 +604,7 @@ GfMatrix4d GetPrimWorldMatrix(
 
     while (!path.IsEmpty()) {
         HdSceneIndexPrim prim = inputScene->GetPrim(path);
-        if (!prim) {
+        if (!prim.dataSource) {
             break;
         }
         HdXformSchema xform =
