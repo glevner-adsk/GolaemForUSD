@@ -142,6 +142,42 @@ struct Args
           furRefineLevel(0)
         {}
 
+    /*
+     * Returns true if any arguments in other differ from these arguments.
+     */
+    bool compare(const Args& other) const
+    {
+#define CMP(var) \
+        if (var != other.var) { \
+            TF_DEBUG_MSG( \
+                GLMHYDRA_TRACE, \
+                "[GolaemHydra] attribute changed: " #var "\n"); \
+            return false; \
+        }
+        CMP(crowdFields);
+        CMP(cacheName);
+        CMP(cacheDir);
+        CMP(characterFiles);
+        CMP(entityIds);
+        CMP(enableLayout);
+        CMP(layoutFiles);
+        CMP(terrainFile);
+        CMP(renderPercent);
+        CMP(displayMode);
+        CMP(geometryTag);
+        CMP(dirmap);
+        CMP(materialPath);
+        CMP(materialAssignMode);
+        CMP(enableMotionBlur);
+        CMP(defaultShutterOpen);
+        CMP(defaultShutterClose);
+        CMP(enableLod);
+        CMP(enableFur);
+        CMP(furRenderPercent);
+        CMP(furRefineLevel);
+        return true;
+    }
+
     VtTokenArray crowdFields;
     TfToken cacheName;
     TfToken cacheDir;
@@ -279,7 +315,8 @@ public:
      }
 
 private:
-    Args GetArgs(const HdSceneIndexBaseRefPtr& inputScene);
+    Args GetArgs(
+        const HdSceneIndexBaseRefPtr& inputScene, const SdfPath& primPath) const;
     void InitCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     void PopulateCrowd(const HdSceneIndexBaseRefPtr& inputScene);
     void GenerateMeshesAndFur(
@@ -400,11 +437,12 @@ void GetTokenArrayPrimvar(
     }
 }
 
-Args GolaemProcedural::GetArgs(const HdSceneIndexBaseRefPtr& inputScene)
+Args GolaemProcedural::GetArgs(
+    const HdSceneIndexBaseRefPtr& inputScene, const SdfPath& primPath) const
 {
     Args result;
 
-    HdSceneIndexPrim prim = inputScene->GetPrim(_GetProceduralPrimPath());
+    HdSceneIndexPrim prim = inputScene->GetPrim(primPath);
     HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(prim.dataSource);
 
     GetTokenArrayPrimvar(
@@ -456,15 +494,13 @@ Args GolaemProcedural::GetArgs(const HdSceneIndexBaseRefPtr& inputScene)
     GetTypedPrimvar(primvars, golaemTokens->materialPath, matpath);
 
     if (matpath.IsEmpty()) {
-        result.materialPath =
-            _GetProceduralPrimPath().AppendElementString("Materials");
+        result.materialPath = primPath.AppendElementString("Materials");
     } else {
         std::string stdpath = matpath.GetString();
         if (stdpath.back() == '/') {
             stdpath.pop_back();
         }
-        result.materialPath = SdfPath(stdpath)
-            .MakeAbsolutePath(_GetProceduralPrimPath());
+        result.materialPath = SdfPath(stdpath).MakeAbsolutePath(primPath);
     }
 
     return result;
@@ -1563,16 +1599,25 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         TfDebug::Helper().Msg(strm.str());
     }
 
-    // fetch arguments (primvars) the first time only (we assume they never
-    // change), then (re)populate the scene
+    // Fetch arguments (primvars), then (re)populate the scene. For now, if any
+    // arguments change from one update to the next, we assume that the whole
+    // scene must be regenerated. But we could be more discerning.
 
-    if (_updateCount == 0) {
-        _args = GetArgs(inputScene);
+    Args newArgs = GetArgs(inputScene, _GetProceduralPrimPath());
+    bool updateAll = false;
+
+    if (_updateCount == 0 || !newArgs.compare(_args)) {
+        _args = newArgs;
+        if (_updateCount > 0) {
+            _factory->clear(glm::crowdio::FactoryClearMode::ALL);
+            updateAll = true;
+        }
         _dirmapRules = glm::stringToStringArray(_args.dirmap.GetString(), ";");
         findDirmappedFile(
             _mappedCacheDir, _args.cacheDir.GetString(), _dirmapRules);
         InitCrowd(inputScene);
     }
+
     ++_updateCount;
     PopulateCrowd(inputScene);
 
@@ -1632,7 +1677,9 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 
             if (previousResult.size() > 0) {
                 outputDirtiedPrims->emplace_back(
-                    groupPath, HdExtentSchema::GetDefaultLocator());
+                    groupPath, updateAll
+                    ? HdDataSourceLocatorSet::UniversalSet()
+                    : HdExtentSchema::GetDefaultLocator());
             }
 
             // a child node for each mesh
@@ -1644,14 +1691,19 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                 _childIndexPairs[childPath] = {i, j};
 
                 if (previousResult.size() > 0) {
-                    HdDataSourceLocatorSet locators = {
-                        HdPrimvarsSchema::GetPointsLocator(),
-                        HdPrimvarsSchema::GetNormalsLocator()
-                    };
-                    if (entity.meshes[j]->HasVariableXform()) {
-                        locators.append(HdXformSchema::GetDefaultLocator());
+                    if (updateAll) {
+                        outputDirtiedPrims->emplace_back(
+                            childPath, HdDataSourceLocatorSet::UniversalSet());
+                    } else {
+                        HdDataSourceLocatorSet locators = {
+                            HdPrimvarsSchema::GetPointsLocator(),
+                            HdPrimvarsSchema::GetNormalsLocator()
+                        };
+                        if (entity.meshes[j]->HasVariableXform()) {
+                            locators.append(HdXformSchema::GetDefaultLocator());
+                        }
+                        outputDirtiedPrims->emplace_back(childPath, locators);
                     }
-                    outputDirtiedPrims->emplace_back(childPath, locators);
                 }
             }
 
@@ -1665,7 +1717,9 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
 
                 if (previousResult.size() > 0) {
                     outputDirtiedPrims->emplace_back(
-                        childPath, HdPrimvarsSchema::GetPointsLocator());
+                        childPath, updateAll
+                        ? HdDataSourceLocatorSet::UniversalSet()
+                        : HdPrimvarsSchema::GetPointsLocator());
                 }
             }
         }
