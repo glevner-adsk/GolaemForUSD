@@ -125,9 +125,6 @@ GolaemHydra Attributes
 
 A complete list of Golaem attributes follows, with their default values, if any.
 
-Note that if the value of any of these attributes changes (due to user
-interaction, for example), the entire Hydra scene is regenerated.
-
 | Attribute                    | Type  | Default Value    |
 | ---------------------------- | ----- | ---------------- |
 | primvars:hdGp:proceduralType | token |                  |

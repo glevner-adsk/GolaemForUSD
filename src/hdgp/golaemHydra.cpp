@@ -157,16 +157,16 @@ struct Args
      * Compares the arguments in other to these arguments and returns an
      * indicator of what has changed.
      */
-    int compare(const Args& other) const
+    ArgChanges compare(const Args& other) const
     {
-        int ret = kNoChanges;
+        ArgChanges ret = kNoChanges;
 
 #define CMP(var, importance)                                    \
         if (var != other.var) {                                 \
             TF_DEBUG_MSG(                                       \
                 GLMHYDRA_TRACE,                                 \
                 "[GolaemHydra] attribute changed: " #var "\n"); \
-            ret = std::max(ret, static_cast<int>(importance));  \
+            ret = std::max(ret, importance);                    \
         }
 
         CMP(crowdFields, kReload);
@@ -1629,7 +1629,7 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
         _args = newArgs;
         updateAll = true;
     } else {
-        int changes = newArgs.compare(_args);
+        Args::ArgChanges changes = newArgs.compare(_args);
         if (changes != Args::kNoChanges) {
             _args = newArgs;
             switch (changes) {
