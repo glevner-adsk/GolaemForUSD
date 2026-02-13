@@ -3667,11 +3667,12 @@ namespace glm
             {
                 return false;
             }
-            SkinMeshData::SP prevMeshData = meshLodData->meshData[meshKey];
-            if (!prevMeshData)
+            auto meshDataIt = meshLodData->meshData.find(meshKey);
+            if (meshDataIt == meshLodData->meshData.end() || !meshDataIt->second)
             {
                 return false;
             }
+            SkinMeshData::SP prevMeshData = meshDataIt->second;
 
             const VtVec3fArray& prevPoints = prevMeshData->points;
             size_t vertexCount = prevPoints.size();
