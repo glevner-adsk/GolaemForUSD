@@ -1498,6 +1498,9 @@ namespace glm
                 SkinMeshEntityFrameData::SP prevFrameData;
                 if (_params.glmComputeVelocities && frame >= _startFrame + 1)
                 {
+                    // we don't actually use prevFrameData, but the smart pointer
+                    // ensures it is not deleted before _ComputeSkinMeshEntity()
+                    // gets a chance to use it
                     prevFrameData = _ComputeSkinMeshEntity(entityData, frame - 1.0);
                 }
                 SkinMeshEntityFrameData::SP entityFrameData = _ComputeSkinMeshEntity(entityData, frame);
