@@ -85,6 +85,7 @@ namespace glm
             ((subdivisionScheme, "subdivisionScheme"))
             ((normals, "normals"))
             ((uvs, "primvars:st"))
+            ((velocities, "velocities"))
         );
 
         TF_DEFINE_PRIVATE_TOKENS(
@@ -228,6 +229,9 @@ namespace glm
             // Define the default value types for our animated properties.
             (*_skinMeshProperties)[_skinMeshPropertyTokens->points].defaultValue = VtValue(VtVec3fArray());
             (*_skinMeshProperties)[_skinMeshPropertyTokens->points].isAnimated = true;
+
+            (*_skinMeshProperties)[_skinMeshPropertyTokens->velocities].defaultValue = VtValue(VtVec3fArray());
+            (*_skinMeshProperties)[_skinMeshPropertyTokens->velocities].isAnimated = true;
 
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].defaultValue = VtValue(VtVec3fArray());
             (*_skinMeshProperties)[_skinMeshPropertyTokens->normals].isAnimated = true;
@@ -1491,6 +1495,11 @@ namespace glm
 
                 // need to lock the entity until all the data is retrieved
                 glm::ScopedLock<glm::Mutex> entityComputeLock(*entityData->entityComputeLock);
+                SkinMeshEntityFrameData::SP prevFrameData;
+                if (_params.glmComputeVelocities && frame >= _startFrame + 1)
+                {
+                    prevFrameData = _ComputeSkinMeshEntity(entityData, frame - 1.0);
+                }
                 SkinMeshEntityFrameData::SP entityFrameData = _ComputeSkinMeshEntity(entityData, frame);
 
                 if (isEntityPath)
@@ -1554,6 +1563,14 @@ namespace glm
                                 {
                                     RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->normals);
                                 }
+                                if (nameToken == _skinMeshPropertyTokens->velocities)
+                                {
+                                    if (!_params.glmComputeVelocities)
+                                    {
+                                        return false;
+                                    }
+                                    RETURN_TRUE_WITH_OPTIONAL_VALUE(meshData->velocities);
+                                }
                             }
                         }
                     }
@@ -1570,6 +1587,14 @@ namespace glm
                         if (nameToken == _skinMeshPropertyTokens->normals)
                         {
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultNormals);
+                        }
+                        if (nameToken == _skinMeshPropertyTokens->velocities)
+                        {
+                            if (!_params.glmComputeVelocities)
+                            {
+                                return false;
+                            }
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultVelocities);
                         }
                     }
                 }
@@ -2668,6 +2693,14 @@ namespace glm
                                 }
                                 *value = VtValue(meshMapData->templateData->uvSets.front());
                             }
+                            else if (nameToken == _skinMeshPropertyTokens->velocities)
+                            {
+                                if (!_params.glmComputeVelocities)
+                                {
+                                    return false;
+                                }
+                                *value = VtValue(meshMapData->templateData->defaultVelocities);
+                            }
                             else
                             {
                                 *value = propInfo->defaultValue;
@@ -3328,7 +3361,8 @@ namespace glm
                         skinMeshEntityFrameData->lodName = TfToken(lodLevelString.c_str());
                     }
 
-                    SkinMeshLodData::SP lodData = skinMeshEntityFrameData->meshLodData[_params.glmLodMode == 0 ? 0 : skinMeshEntityFrameData->geometryFileIdx];
+                    size_t lodLevel = _params.glmLodMode == 0 ? 0 : skinMeshEntityFrameData->geometryFileIdx;
+                    SkinMeshLodData::SP lodData = skinMeshEntityFrameData->meshLodData[lodLevel];
 
                     auto& lodTemplateData = characterTemplateData[skinMeshEntityFrameData->geometryFileIdx];
 
@@ -3407,10 +3441,11 @@ namespace glm
 
                             int gchaMeshId = outputData._gchaMeshIds[iRenderMesh];
                             int meshMaterialIndex = outputData._meshAssetMaterialIndices[iRenderMesh];
+                            std::pair<int, int> meshKey = {gchaMeshId, meshMaterialIndex};
 
                             SkinMeshData::SP meshData = new SkinMeshData();
-                            lodData->meshData[{gchaMeshId, meshMaterialIndex}] = meshData;
-                            meshData->templateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
+                            lodData->meshData[meshKey] = meshData;
+                            meshData->templateData = lodTemplateData.at(meshKey);
 
                             meshData->points.resize(meshData->templateData->defaultPoints.size());
                             meshData->normals.resize(meshData->templateData->defaultNormals.size());
@@ -3478,6 +3513,12 @@ namespace glm
                                 }
                             }
 
+                            if (_params.glmComputeVelocities
+                                && !_ComputeVelocities(entityData, frame, lodLevel, meshData, meshKey))
+                            {
+                                meshData->velocities = meshData->templateData->defaultVelocities;
+                            }
+
                             if (hasNormals)
                             {
                                 FbxAMatrix globalRotate(identityMatrix);
@@ -3534,10 +3575,11 @@ namespace glm
 
                             int gchaMeshId = outputData._gchaMeshIds[iRenderMesh];
                             int meshMaterialIndex = outputData._meshAssetMaterialIndices[iRenderMesh];
+                            std::pair<int, int> meshKey = {gchaMeshId, meshMaterialIndex};
 
                             SkinMeshData::SP meshData = new SkinMeshData();
-                            lodData->meshData[{gchaMeshId, meshMaterialIndex}] = meshData;
-                            meshData->templateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
+                            lodData->meshData[meshKey] = meshData;
+                            meshData->templateData = lodTemplateData.at(meshKey);
 
                             meshData->points.resize(meshData->templateData->defaultPoints.size());
                             meshData->normals.resize(meshData->templateData->defaultNormals.size());
@@ -3548,6 +3590,12 @@ namespace glm
                                 GfVec3f& point = meshData->points[iVertex];
                                 point.Set(meshVertex.getFloatValues());
                                 point -= skinMeshEntityFrameData->pos;
+                            }
+
+                            if (_params.glmComputeVelocities
+                                && !_ComputeVelocities(entityData, frame, lodLevel, meshData, meshKey))
+                            {
+                                meshData->velocities = meshData->templateData->defaultVelocities;
                             }
 
                             const glm::Array<glm::Vector3>& meshDeformedNormals = frameDeformedNormals[iRenderMesh];
@@ -3589,6 +3637,54 @@ namespace glm
                 }
             }
             return skinMeshEntityFrameData;
+        }
+
+        //-----------------------------------------------------------------------------
+        bool GolaemUSD_DataImpl::_ComputeVelocities(
+            EntityData::SP entityData, double frame, size_t lodLevel,
+            SkinMeshData::SP meshData, const std::pair<int, int>& meshKey) const
+        {
+            if (frame < _startFrame + 1)
+            {
+                return false;
+            }
+            SkinMeshEntityFrameData::SP prevFrameData =
+                entityData->findFrameData<SkinMeshEntityFrameData>(frame - 1.0);
+            if (!prevFrameData)
+            {
+                return false;
+            }
+            if (prevFrameData->geometryFileIdx != lodLevel)
+            {
+                return false;
+            }
+            if (prevFrameData->meshLodData.size() <= lodLevel)
+            {
+                return false;
+            }
+            SkinMeshLodData::SP meshLodData = prevFrameData->meshLodData[lodLevel];
+            if (!meshLodData)
+            {
+                return false;
+            }
+            SkinMeshData::SP prevMeshData = meshLodData->meshData[meshKey];
+            if (!prevMeshData)
+            {
+                return false;
+            }
+
+            const VtVec3fArray& prevPoints = prevMeshData->points;
+            size_t vertexCount = prevPoints.size();
+            meshData->velocities.resize(vertexCount);
+
+            for (size_t iVertex = 0; iVertex < vertexCount; ++iVertex)
+            {
+                const GfVec3f& currPoint = meshData->points[iVertex];
+                const GfVec3f& prevPoint = prevPoints[iVertex];
+                meshData->velocities[iVertex] = (currPoint - prevPoint) * _fps;
+            }
+
+            return true;
         }
 
         //-----------------------------------------------------------------------------
@@ -3841,6 +3937,10 @@ namespace glm
 
                     meshTemplateData->defaultNormals.assign(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
 
+                    if (_params.glmComputeVelocities) {
+                        meshTemplateData->defaultVelocities.assign(iActualVertex, GfVec3f(0.0f, 0.0f, 0.0f));
+                    }
+
                     // find how many uv layers are available
                     int uvSetCount = fbxMesh->GetLayerCount(FbxLayerElement::eUV);
                     meshTemplateData->uvSets.resize(uvSetCount);
@@ -3927,6 +4027,10 @@ namespace glm
                     }
 
                     meshTemplateData->defaultNormals.assign(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
+
+                    if (_params.glmComputeVelocities) {
+                        meshTemplateData->defaultPoints.assign(assetFileMesh._vertexCount, GfVec3f(0.0f, 0.0f, 0.0f));
+                    }
 
                     meshTemplateData->uvSets.resize(assetFileMesh._uvSetCount);
                     for (size_t iUVSet = 0; iUVSet < assetFileMesh._uvSetCount; ++iUVSet)

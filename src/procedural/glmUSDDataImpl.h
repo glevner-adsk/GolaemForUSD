@@ -97,6 +97,9 @@ namespace glm
                 void initEntityLock();
 
                 template <class FrameDataType>
+                SmartPointer<FrameDataType> findFrameData(const double& frame) const;
+
+                template <class FrameDataType>
                 SmartPointer<FrameDataType> getFrameData(const double& frame, size_t cachedFramesCount);
             };
 
@@ -110,6 +113,7 @@ namespace glm
                 GlmString meshAlias;
                 VtVec3fArray defaultPoints;
                 VtVec3fArray defaultNormals;
+                VtVec3fArray defaultVelocities;
                 // int normalsCount; // not needed, = faceVertexIndices.size();
                 SdfPathListOp materialPath;
             };
@@ -121,6 +125,7 @@ namespace glm
                 // these parameters are animated
                 VtVec3fArray points;
                 VtVec3fArray normals; // stored by polygon vertex
+                VtVec3fArray velocities;
 
                 SkinMeshTemplateData::SP templateData = NULL;
             };
@@ -322,6 +327,9 @@ namespace glm
             SdfPath _CreateHierarchyFor(const glm::GlmString& hierarchy, const SdfPath& parentPath, GlmMap<GlmString, SdfPath>& existingPaths);
             SkelEntityFrameData::SP _ComputeSkelEntity(EntityData::SP entityData, double frame);
             SkinMeshEntityFrameData::SP _ComputeSkinMeshEntity(EntityData::SP entityData, double frame);
+            bool _ComputeVelocities(
+                EntityData::SP entityData, double frame, size_t lodLevel,
+                SkinMeshData::SP meshData, const std::pair<int, int>& meshKey) const;
             void _ComputeEntity(EntityFrameData::SP entityFrameData, double frame);
             void _InvalidateEntity(EntityFrameData::SP entityFrameData);
             void _getCharacterExtent(EntityData::SP entityData, GfVec3f& extent) const;
@@ -349,11 +357,23 @@ namespace glm
 
         //-----------------------------------------------------------------------------
         template <class FrameDataType>
+        SmartPointer<FrameDataType> GolaemUSD_DataImpl::EntityData::findFrameData(const double& frame) const
+        {
+            SmartPointer<FrameDataType> frameData;
+            auto itFrameData = frameDataMap.find(frame);
+            if (itFrameData != frameDataMap.end())
+            {
+                frameData = glm::staticCast<FrameDataType>(itFrameData.getValue());
+            }
+            return frameData;
+        }
+
+        //-----------------------------------------------------------------------------
+        template <class FrameDataType>
         SmartPointer<FrameDataType> GolaemUSD_DataImpl::EntityData::getFrameData(const double& frame, size_t cachedFramesCount)
         {
-            SmartPointer<FrameDataType> frameData = nullptr;
-            auto itFrameData = frameDataMap.find(frame);
-            if (itFrameData == frameDataMap.end())
+            SmartPointer<FrameDataType> frameData = findFrameData<FrameDataType>(frame);
+            if (!frameData)
             {
                 frameData = new FrameDataType();
 
@@ -363,10 +383,6 @@ namespace glm
                     frameDataMap.erase(frameDataMap.begin());
                 }
                 frameDataMap[frame] = frameData;
-            }
-            else
-            {
-                frameData = glm::staticCast<FrameDataType>(itFrameData.getValue());
             }
             return frameData;
         }
