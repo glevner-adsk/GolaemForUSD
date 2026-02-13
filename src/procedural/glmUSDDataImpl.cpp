@@ -4029,7 +4029,7 @@ namespace glm
                     meshTemplateData->defaultNormals.assign(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
 
                     if (_params.glmComputeVelocities) {
-                        meshTemplateData->defaultPoints.assign(assetFileMesh._vertexCount, GfVec3f(0.0f, 0.0f, 0.0f));
+                        meshTemplateData->defaultVelocities.assign(assetFileMesh._vertexCount, GfVec3f(0.0f, 0.0f, 0.0f));
                     }
 
                     meshTemplateData->uvSets.resize(assetFileMesh._uvSetCount);
