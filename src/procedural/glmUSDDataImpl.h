@@ -130,11 +130,34 @@ namespace glm
                 SkinMeshTemplateData::SP templateData = NULL;
             };
 
+            struct FurTemplateData : public glm::ReferenceCounter
+            {
+                typedef SmartPointer<FurTemplateData> SP;
+
+                VtIntArray vertexCounts;
+                VtArray<GfVec2f> uvs;
+                GlmString furAlias;
+                VtVec3fArray defaultPoints;
+                VtFloatArray unscaledWidths;
+                SdfPathListOp materialPath;
+            };
+
+            struct FurData : public glm::ReferenceCounter
+            {
+                typedef SmartPointer<FurData> SP;
+
+                VtVec3fArray points;
+                VtFloatArray widths;
+
+                FurTemplateData::SP templateData;
+            };
+
             struct SkinMeshLodData : public glm::ReferenceCounter
             {
                 typedef SmartPointer<SkinMeshLodData> SP;
 
                 std::map<std::pair<int, int>, SkinMeshData::SP> meshData;
+                std::map<int, FurData::SP> furData;
                 EntityData::SP entityData = NULL;
                 bool enabled = false;
             };
@@ -192,6 +215,13 @@ namespace glm
                 SkinMeshTemplateData::SP templateData;
             };
 
+            struct FurMapData
+            {
+                EntityData::SP entityData;
+                int furAssetIndex;
+                FurTemplateData::SP templateData;
+            };
+
             struct UsdWrapper
             {
             public:
@@ -217,6 +247,7 @@ namespace glm
             glm::Array<PODArray<int>> _snsIndicesPerChar;
             glm::Array<VtTokenArray> _jointsPerChar;
             glm::Array<glm::Array<std::map<std::pair<int, int>, SkinMeshTemplateData::SP>>> _skinMeshTemplateDataPerCharPerGeomFile;
+            glm::Array<glm::Array<std::map<int, FurTemplateData::SP>>> _furTemplateDataPerCharPerGeomFile;
 
             glm::Array<GlmString> _shaderAttrTypes;
             glm::Array<VtValue> _shaderAttrDefaultValues;
@@ -245,6 +276,8 @@ namespace glm
             TfHashMap<SdfPath, SkinMeshMapData, SdfPath::Hash> _skinMeshDataMap;
             TfHashMap<SdfPath, SkinMeshLodMapData, SdfPath::Hash> _skinMeshLodDataMap;
 
+            TfHashMap<SdfPath, FurMapData, SdfPath::Hash> _furDataMap;
+
             TfHashMap<SdfPath, SkelEntityData::SP, SdfPath::Hash> _skelAnimDataMap;
 
             glm::PODArray<glm::Mutex*> _cachedSimulationLocks;
@@ -257,6 +290,7 @@ namespace glm
 
             SdfPath _rootPathInFinalStage;
             int _rootNodeIdInFinalStage = -1;
+            int _furCurveIncr = 1;
 
         public:
             GolaemUSD_DataImpl(const GolaemUSD_DataParams& params);
@@ -345,6 +379,17 @@ namespace glm
                 const std::map<std::pair<int, int>, SkinMeshTemplateData::SP>& templateDataPerMesh,
                 const glm::PODArray<int>& gchaMeshIds,
                 const glm::PODArray<int>& meshAssetMaterialIndices);
+            void _ComputeFurTemplateData(
+                std::map<int, FurTemplateData::SP>& furTemplateDataMap,
+                const glm::crowdio::InputEntityGeoData& inputGeoData,
+                const glm::crowdio::OutputEntityGeoData& outputData);
+            void _InitFurData(
+                const SdfPath& parentPath,
+                EntityData::SP entityData,
+                const std::map<int, FurTemplateData::SP>& templateDataPerFur);
+            GlmString _GetMaterialForShadingGroup(
+                const GolaemCharacter *character, int characterIdx,
+                int shadingGroupIdx) const;
 
             bool _QueryEntityAttributes(EntityFrameData::SP entityFrameData, const TfToken& nameToken, VtValue* value);
         };

@@ -37,6 +37,7 @@ USD_INCLUDES_END
 
 #include <glmIdsFilter.h>
 
+#include <cmath>
 #include <fstream>
 
 namespace glm
@@ -94,6 +95,14 @@ namespace glm
         );
 
         TF_DEFINE_PRIVATE_TOKENS(
+            _furPropertyTokens,
+            (curveVertexCounts)
+            (points)
+            (widths)
+            ((uvs, "primvars:st"))
+        );
+
+        TF_DEFINE_PRIVATE_TOKENS(
             _skelEntityRelationshipTokens,
             ((animationSource, "skel:animationSource"))
             ((skeleton, "skel:skeleton"))
@@ -101,6 +110,11 @@ namespace glm
 
         TF_DEFINE_PRIVATE_TOKENS(
             _skinMeshRelationshipTokens,
+            ((materialBinding, "material:binding"))
+        );
+
+        TF_DEFINE_PRIVATE_TOKENS(
+            _furRelationshipTokens,
             ((materialBinding, "material:binding"))
         );
 
@@ -284,6 +298,37 @@ namespace glm
             (_LeafPrimRelationshiphMap), _skinMeshRelationships)
         {
             (*_skinMeshRelationships)[_skinMeshRelationshipTokens->materialBinding].defaultTargetPath = SdfPathListOp::CreateExplicit({SdfPath("/Root/Materials/DefaultGolaemMat")});
+        }
+
+        TF_MAKE_STATIC_DATA(
+            (_LeafPrimPropertyMap), _furProperties)
+        {
+            // Define the default value types for our animated properties.
+            (*_furProperties)[_furPropertyTokens->points].defaultValue = VtValue(VtVec3fArray());
+            (*_furProperties)[_furPropertyTokens->points].isAnimated = true;
+
+            (*_furProperties)[_furPropertyTokens->widths].defaultValue = VtValue(VtFloatArray());
+            (*_furProperties)[_furPropertyTokens->widths].isAnimated = false;
+
+            (*_furProperties)[_furPropertyTokens->curveVertexCounts].defaultValue = VtValue(VtIntArray());
+            (*_furProperties)[_furPropertyTokens->curveVertexCounts].isAnimated = false;
+
+            (*_furProperties)[_furPropertyTokens->uvs].defaultValue = VtValue(VtVec2fArray());
+            (*_furProperties)[_furPropertyTokens->uvs].isAnimated = false;
+
+            // Use the schema to derive the type name tokens from each property's
+            // default value.
+            for (auto& it : *_furProperties)
+            {
+                it.second.typeName =
+                    SdfSchema::GetInstance().FindType(it.second.defaultValue).GetAsToken();
+            }
+        }
+
+        TF_MAKE_STATIC_DATA(
+            (_LeafPrimRelationshiphMap), _furRelationships)
+        {
+            (*_furRelationships)[_furRelationshipTokens->materialBinding].defaultTargetPath = SdfPathListOp::CreateExplicit({SdfPath("/Root/Materials/DefaultGolaemMat")});
         }
 
         TF_MAKE_STATIC_DATA(
@@ -528,6 +573,20 @@ namespace glm
                             return SdfSpecTypeRelationship;
                         }
                     }
+                    if (TfMapLookupPtr(*_furProperties, nameToken) != NULL)
+                    {
+                        if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
+                        {
+                            return SdfSpecTypeAttribute;
+                        }
+                    }
+                    if (TfMapLookupPtr(*_furRelationships, nameToken) != NULL)
+                    {
+                        if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
+                        {
+                            return SdfSpecTypeRelationship;
+                        }
+                    }
                     if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                     {
                         if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
@@ -673,10 +732,13 @@ namespace glm
                         {
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken("Xform"));
                         }
-
                         if (TfMapLookupPtr(_skinMeshDataMap, path) != NULL)
                         {
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken("Mesh"));
+                        }
+                        if (TfMapLookupPtr(_furDataMap, path) != NULL)
+                        {
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken("BasisCurves"));
                         }
                     }
                 }
@@ -685,7 +747,8 @@ namespace glm
                 {
                     if (_params.glmDisplayMode == GolaemDisplayMode::SKINMESH)
                     {
-                        if (TfMapLookupPtr(_skinMeshDataMap, path) != NULL)
+                        if (TfMapLookupPtr(_skinMeshDataMap, path) ||
+                            TfMapLookupPtr(_furDataMap, path))
                         {
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(SdfTokenListOp::CreateExplicit({TfToken("MaterialBindingAPI")}));
                         }
@@ -770,7 +833,8 @@ namespace glm
                     }
                     else
                     {
-                        if (TfMapLookupPtr(_skinMeshDataMap, path) == NULL)
+                        if (TfMapLookupPtr(_skinMeshDataMap, path) == NULL &&
+                            TfMapLookupPtr(_furDataMap, path) == NULL)
                         {
                             if (const std::vector<TfToken>* childNames = TfMapLookupPtr(_primChildNames, path))
                             {
@@ -841,6 +905,12 @@ namespace glm
                             std::vector<TfToken> meshTokens = _skinMeshPropertyTokens->allTokens;
                             meshTokens.insert(meshTokens.end(), _skinMeshRelationshipTokens->allTokens.begin(), _skinMeshRelationshipTokens->allTokens.end());
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTokens);
+                        }
+                        if (TfMapLookupPtr(_furDataMap, path) != NULL)
+                        {
+                            std::vector<TfToken> furTokens = _furPropertyTokens->allTokens;
+                            furTokens.insert(furTokens.end(), _furRelationshipTokens->allTokens.begin(), _furRelationshipTokens->allTokens.end());
+                            RETURN_TRUE_WITH_OPTIONAL_VALUE(furTokens);
                         }
                     }
                 }
@@ -978,6 +1048,24 @@ namespace glm
                         }
                     }
                 }
+                // Visit the property specs which exist only on entity fur prims.
+                for (auto& it : _furDataMap)
+                {
+                    for (const TfToken& propertyName : _furPropertyTokens->allTokens)
+                    {
+                        if (!visitor->VisitSpec(data, it.first.AppendProperty(propertyName)))
+                        {
+                            return;
+                        }
+                    }
+                    for (const TfToken& propertyName : _furRelationshipTokens->allTokens)
+                    {
+                        if (!visitor->VisitSpec(data, it.first.AppendProperty(propertyName)))
+                        {
+                            return;
+                        }
+                    }
+                }
             }
         }
 
@@ -1100,7 +1188,7 @@ namespace glm
                         }
                         if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshProperties, nameToken))
                         {
-                            if (TfMapLookupPtr(_skinMeshDataMap, primPath) != NULL)
+                            if (TfMapLookupPtr(_skinMeshDataMap, primPath))
                             {
                                 // Include time sample field in the property is animated.
                                 if (propInfo->isAnimated)
@@ -1124,6 +1212,36 @@ namespace glm
                         if (TfMapLookupPtr(*_skinMeshRelationships, nameToken) != NULL)
                         {
                             if (TfMapLookupPtr(_skinMeshDataMap, primPath) != NULL)
+                            {
+                                return relationshipFields;
+                            }
+                        }
+                        if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                        {
+                            if (TfMapLookupPtr(_furDataMap, primPath))
+                            {
+                                // Include time sample field in the property is animated.
+                                if (propInfo->isAnimated)
+                                {
+                                    if (propInfo->hasInterpolation)
+                                    {
+                                        return animInterpPropFields;
+                                    }
+                                    return animPropFields;
+                                }
+                                else
+                                {
+                                    if (propInfo->hasInterpolation)
+                                    {
+                                        return nonAnimInterpPropFields;
+                                    }
+                                    return nonAnimPropFields;
+                                }
+                            }
+                        }
+                        if (TfMapLookupPtr(*_furRelationships, nameToken) != NULL)
+                        {
+                            if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
                             {
                                 return relationshipFields;
                             }
@@ -1224,6 +1342,15 @@ namespace glm
                              UsdTokens->apiSchemas,
                              SdfChildrenKeys->PropertyChildren});
                         return meshPrimFields;
+                    }
+                    else if (TfMapLookupPtr(_furDataMap, path) != NULL)
+                    {
+                        static std::vector<TfToken> furPrimFields(
+                            {SdfFieldKeys->Specifier,
+                             SdfFieldKeys->TypeName,
+                             UsdTokens->apiSchemas,
+                             SdfChildrenKeys->PropertyChildren});
+                        return furPrimFields;
                     }
                     else
                     {
@@ -1459,13 +1586,17 @@ namespace glm
                 isEntityPath = entityData != nullptr;
                 bool isMeshLodPath = false;
                 bool isMeshPath = false;
+                bool isFurPath = false;
                 size_t lodIndex = 0;
                 int gchaMeshId = 0;
                 int meshMaterialIndex = 0;
+                int furAssetIndex = 0;
                 if (entityData == nullptr)
                 {
-                    const SkinMeshMapData* meshMapData = TfMapLookupPtr(_skinMeshDataMap, primPath);
-                    if (meshMapData != NULL)
+                    const SkinMeshMapData* meshMapData = nullptr;
+                    const SkinMeshLodMapData* lodMapData = nullptr;
+                    const FurMapData* furData = nullptr;
+                    if ((meshMapData = TfMapLookupPtr(_skinMeshDataMap, primPath)))
                     {
                         entityData = meshMapData->entityData;
                         lodIndex = meshMapData->lodIndex;
@@ -1473,15 +1604,17 @@ namespace glm
                         meshMaterialIndex = meshMapData->meshMaterialIndex;
                         isMeshPath = true;
                     }
-                    else
+                    else if ((lodMapData = TfMapLookupPtr(_skinMeshLodDataMap, primPath)))
                     {
-                        const SkinMeshLodMapData* lodMapData = TfMapLookupPtr(_skinMeshLodDataMap, primPath);
-                        if (lodMapData != NULL)
-                        {
-                            entityData = lodMapData->entityData;
-                            lodIndex = lodMapData->lodIndex;
-                            isMeshLodPath = true;
-                        }
+                        entityData = lodMapData->entityData;
+                        lodIndex = lodMapData->lodIndex;
+                        isMeshLodPath = true;
+                    }
+                    else if ((furData = TfMapLookupPtr(_furDataMap, primPath)))
+                    {
+                        entityData = furData->entityData;
+                        furAssetIndex = furData->furAssetIndex;
+                        isFurPath = true;
                     }
                 }
                 if (entityData == nullptr || entityData->excluded)
@@ -1535,14 +1668,14 @@ namespace glm
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(_params.glmLodMode == 1 || meshLodData->enabled ? UsdGeomTokens->inherited : UsdGeomTokens->invisible);
                     }
                 }
-                else if (isMeshPath)
+                else if (isMeshPath || isFurPath)
                 {
-                    // this is a mesh node
+                    // this is a mesh or a fur node
 
                     bool useTemplateData = false;
                     if (!entityFrameData->enabled)
                     {
-                        // entity is disabled, use the mesh template data
+                        // entity is disabled, use the template data
                         useTemplateData = true;
                     }
                     else
@@ -1550,10 +1683,10 @@ namespace glm
                         SkinMeshLodData::SP meshLodData = entityFrameData->meshLodData[lodIndex];
                         if (!meshLodData->enabled)
                         {
-                            // this is a mesh from an inactive lod, use the mesh template data
+                            // this is from an inactive LOD, use the template data
                             useTemplateData = true;
                         }
-                        else
+                        else if (isMeshPath)
                         {
                             SkinMeshData::SP meshData = meshLodData->meshData.at({gchaMeshId, meshMaterialIndex});
                             if (meshData != NULL)
@@ -1576,28 +1709,60 @@ namespace glm
                                 }
                             }
                         }
+                        else
+                        {
+                            FurData::SP furData = meshLodData->furData.at(furAssetIndex);
+                            if (furData)
+                            {
+                                if (nameToken == _furPropertyTokens->points)
+                                {
+                                    RETURN_TRUE_WITH_OPTIONAL_VALUE(furData->points);
+                                }
+                                if (nameToken == _furPropertyTokens->widths)
+                                {
+                                    RETURN_TRUE_WITH_OPTIONAL_VALUE(furData->widths);
+                                }
+                            }
+                        }
                     }
 
                     if (useTemplateData)
                     {
-                        auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
-                        const auto& lodTemplateData = characterTemplateData[lodIndex];
-                        SkinMeshTemplateData::SP meshTemplateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
-                        if (nameToken == _skinMeshPropertyTokens->points)
+                        if (isMeshPath)
                         {
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultPoints);
-                        }
-                        if (nameToken == _skinMeshPropertyTokens->normals)
-                        {
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultNormals);
-                        }
-                        if (nameToken == _skinMeshPropertyTokens->velocities)
-                        {
-                            if (!_params.glmComputeVelocities)
+                            const auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
+                            const auto& lodTemplateData = characterTemplateData[lodIndex];
+                            SkinMeshTemplateData::SP meshTemplateData = lodTemplateData.at({gchaMeshId, meshMaterialIndex});
+                            if (nameToken == _skinMeshPropertyTokens->points)
                             {
-                                return false;
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultPoints);
                             }
-                            RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultVelocities);
+                            if (nameToken == _skinMeshPropertyTokens->normals)
+                            {
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultNormals);
+                            }
+                            if (nameToken == _skinMeshPropertyTokens->velocities)
+                            {
+                                if (!_params.glmComputeVelocities)
+                                {
+                                    return false;
+                                }
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTemplateData->defaultVelocities);
+                            }
+                        }
+                        else
+                        {
+                            const auto& characterTemplateData = _furTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
+                            const auto& lodTemplateData = characterTemplateData[lodIndex];
+                            FurTemplateData::SP furTemplateData = lodTemplateData.at(furAssetIndex);
+                            if (nameToken == _furPropertyTokens->points)
+                            {
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(furTemplateData->defaultPoints);
+                            }
+                            if (nameToken == _furPropertyTokens->widths)
+                            {
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(furTemplateData->unscaledWidths);
+                            }
                         }
                     }
                 }
@@ -1707,6 +1872,8 @@ namespace glm
             {
                 usdCharacterFiles = _params.glmUsdCharacterFiles.GetText();
             }
+
+            _furCurveIncr = std::lround(100.0f / _params.glmFurRenderPercent);
 
             float renderPercent = _params.glmRenderPercent * 0.01f;
 
@@ -1849,11 +2016,17 @@ namespace glm
 
             if (displayMode == GolaemDisplayMode::SKINMESH)
             {
-                _skinMeshTemplateDataPerCharPerGeomFile.resize(_factory->getGolaemCharacters().size());
+                int charCount = _factory->getGolaemCharacters().sizeInt();
+
+                _skinMeshTemplateDataPerCharPerGeomFile.resize(charCount);
+                if (_params.glmEnableFur)
+                {
+                    _furTemplateDataPerCharPerGeomFile.resize(charCount);
+                }
 
                 PODArray<int> meshAssets;
 
-                for (int iChar = 0, charCount = _factory->getGolaemCharacters().sizeInt(); iChar < charCount; ++iChar)
+                for (int iChar = 0; iChar < charCount; ++iChar)
                 {
                     const glm::GolaemCharacter* character = _factory->getGolaemCharacter(iChar);
                     if (character == NULL)
@@ -1873,9 +2046,14 @@ namespace glm
                     inputGeoData._entityToBakeIndex = -1;
                     inputGeoData._character = character;
                     inputGeoData._characterIdx = iChar;
+                    inputGeoData._generateFur = _params.glmEnableFur;
 
                     size_t geoCount = character->getGeometryAssetsCount(inputGeoData._geometryTag);
                     characterTemplateData.resize(geoCount);
+                    if (_params.glmEnableFur)
+                    {
+                        _furTemplateDataPerCharPerGeomFile[iChar].resize(geoCount);
+                    }
 
                     // add all assets
                     meshAssets.resize(character->_meshAssets.size());
@@ -1893,6 +2071,11 @@ namespace glm
                         if (geoStatus == glm::crowdio::GIO_SUCCESS)
                         {
                             _ComputeSkinMeshTemplateData(characterTemplateData[iGeo], inputGeoData, outputData);
+                            if (_params.glmEnableFur)
+                            {
+                                _ComputeFurTemplateData(
+                                    _furTemplateDataPerCharPerGeomFile[iChar][iGeo], inputGeoData, outputData);
+                            }
                         }
                     }
                 }
@@ -2081,6 +2264,7 @@ namespace glm
                         entityData->inputGeoData._fbxStorage = &getFbxStorage();
                         entityData->inputGeoData._fbxBaker = &getFbxBaker();
                         entityData->inputGeoData._enableLOD = _params.glmLodMode != 0 ? 1 : 0;
+                        entityData->inputGeoData._generateFur = _params.glmEnableFur;
                     }
                     _entityDataMap[entityPath] = entityData;
                     entityData->cfIdx = iCf;
@@ -2237,7 +2421,8 @@ namespace glm
                     }
                     else if (displayMode == GolaemDisplayMode::SKINMESH)
                     {
-                        auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
+                        auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[characterIdx];
+                        auto& furTemplateData = _furTemplateDataPerCharPerGeomFile[characterIdx];
 
                         glm::PODArray<int> gchaMeshIds;
                         glm::PODArray<int> meshAssetMaterialIndices;
@@ -2278,6 +2463,10 @@ namespace glm
                             skinMeshEntityData->lodEnabled.resize(1, 1);
 
                             _InitSkinMeshData(entityData->entityPath, skinMeshEntityData, 0, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
+                            if (_params.glmEnableFur)
+                            {
+                                _InitFurData(entityData->entityPath, entityData, furTemplateData[geometryFileIdx]);
+                            }
                         }
                         else
                         {
@@ -2296,6 +2485,10 @@ namespace glm
 
                                 const auto& lodTemplateData = characterTemplateData[iLod];
                                 _InitSkinMeshData(lodPath, skinMeshEntityData, iLod, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
+                                if (_params.glmEnableFur)
+                                {
+                                    _InitFurData(lodPath, entityData, furTemplateData[iLod]);
+                                }
                             }
                         }
                     }
@@ -2420,6 +2613,23 @@ namespace glm
         }
 
         //-----------------------------------------------------------------------------
+        void GolaemUSD_DataImpl::_InitFurData(
+            const SdfPath& parentPath,
+            EntityData::SP entityData,
+            const std::map<int, FurTemplateData::SP>& templateDataPerFur)
+        {
+            for (const auto& [assetIndex, furTemplateData]: templateDataPerFur)
+            {
+                GlmMap<GlmString, SdfPath> existingPaths;
+                SdfPath furPath = _CreateHierarchyFor(furTemplateData->furAlias, parentPath, existingPaths);
+                FurMapData& furMapData = _furDataMap[furPath];
+                furMapData.entityData = entityData;
+                furMapData.furAssetIndex = assetIndex;
+                furMapData.templateData = furTemplateData;
+            }
+        }
+
+        //-----------------------------------------------------------------------------
         bool GolaemUSD_DataImpl::_IsAnimatedProperty(const SdfPath& path) const
         {
             // Check that it is a property id.
@@ -2488,6 +2698,13 @@ namespace glm
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshProperties, nameToken))
                 {
                     if (TfMapLookupPtr(_skinMeshDataMap, primPath) != NULL)
+                    {
+                        return propInfo->isAnimated;
+                    }
+                }
+                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                {
+                    if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
                     {
                         return propInfo->isAnimated;
                     }
@@ -2712,6 +2929,37 @@ namespace glm
                         return true;
                     }
                 }
+                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                {
+                    // Check that it belongs to a leaf prim before getting the default value
+                    if (const FurMapData* furMapData = TfMapLookupPtr(_furDataMap, primPath))
+                    {
+                        if (value)
+                        {
+                            if (nameToken == _furPropertyTokens->points)
+                            {
+                                *value = VtValue(furMapData->templateData->defaultPoints);
+                            }
+                            else if (nameToken == _furPropertyTokens->curveVertexCounts)
+                            {
+                                *value = VtValue(furMapData->templateData->vertexCounts);
+                            }
+                            else if (nameToken == _furPropertyTokens->widths)
+                            {
+                                *value = VtValue(furMapData->templateData->unscaledWidths);
+                            }
+                            else if (nameToken == _furPropertyTokens->uvs)
+                            {
+                                *value = VtValue(furMapData->templateData->uvs);
+                            }
+                            else
+                            {
+                                *value = propInfo->defaultValue;
+                            }
+                        }
+                        return true;
+                    }
+                }
                 if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
                     if (const size_t* ppAttrIdx = TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken))
@@ -2809,6 +3057,26 @@ namespace glm
                     }
                     return false;
                 }
+                if (const _PrimRelationshipInfo* relInfo = TfMapLookupPtr(*_furRelationships, nameToken))
+                {
+                    // Check that it belongs to a leaf prim before getting the default value
+                    if (const FurMapData* furMapData = TfMapLookupPtr(_furDataMap, primPath))
+                    {
+                        if (value)
+                        {
+                            if (nameToken == _furRelationshipTokens->materialBinding)
+                            {
+                                *value = VtValue(furMapData->templateData->materialPath);
+                            }
+                            else
+                            {
+                                *value = VtValue(relInfo->defaultTargetPath);
+                            }
+                        }
+                        return true;
+                    }
+                    return false;
+                }
             }
 
             return false;
@@ -2836,6 +3104,22 @@ namespace glm
                 {
                     // Check that it belongs to a leaf prim before getting the interpolation value
                     if (TfMapLookupPtr(_skinMeshDataMap, primPath) != NULL)
+                    {
+                        if (value)
+                        {
+                            if (propInfo->hasInterpolation)
+                            {
+                                *value = VtValue(propInfo->interpolation);
+                            }
+                        }
+                        return propInfo->hasInterpolation;
+                    }
+                    return false;
+                }
+                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                {
+                    // Check that it belongs to a leaf prim before getting the interpolation value
+                    if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
                     {
                         if (value)
                         {
@@ -2950,6 +3234,16 @@ namespace glm
                 {
                     // Check that it belongs to a leaf prim before getting the type name value
                     if (TfMapLookupPtr(_skinMeshDataMap, primPath) != NULL)
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(propInfo->typeName);
+                    }
+
+                    return false;
+                }
+                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                {
+                    // Check that it belongs to a leaf prim before getting the type name value
+                    if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(propInfo->typeName);
                     }
@@ -3290,7 +3584,8 @@ namespace glm
 
             GolaemDisplayMode::Value displayMode = (GolaemDisplayMode::Value)_params.glmDisplayMode;
 
-            auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[entityData->inputGeoData._characterIdx];
+            auto characterIdx = entityData->inputGeoData._characterIdx;
+            auto& characterTemplateData = _skinMeshTemplateDataPerCharPerGeomFile[characterIdx];
 
             if (displayMode == GolaemDisplayMode::BOUNDING_BOX)
             {
@@ -3637,6 +3932,67 @@ namespace glm
                             }
                         }
                     }
+
+                    if (_params.glmEnableFur)
+                    {
+                        const auto& idsArray = outputData._furIdsArray;
+                        for (size_t ifur = 0; ifur < idsArray.size(); ++ifur)
+                        {
+                            const glm::crowdio::FurIds& ids = idsArray[ifur];
+                            int assetIndex = static_cast<int>(ids._furAssetIdx);
+                            auto geoFileIndex = skinMeshEntityFrameData->geometryFileIdx;
+
+                            FurTemplateData::SP furTemplateData =
+                                _furTemplateDataPerCharPerGeomFile[characterIdx][geoFileIndex].at(assetIndex);
+                            FurData::SP furData = new FurData();
+                            lodData->furData[assetIndex] = furData;
+                            furData->templateData = furTemplateData;
+
+                            // copy deformed vertices
+
+                            furData->points.reserve(furTemplateData->defaultPoints.size());
+
+                            const glm::crowdio::FurCache::SP& cache = outputData._furCacheArray[ids._furCacheIdx];
+                            const glm::Array<glm::Vector3>& vsrc = outputData._deformedFurVertices[0][ifur];
+                            VtVec3fArray& vdst = furData->points;
+                            size_t inputIndex = 0;
+
+                            for (const glm::crowdio::FurCurveGroup& group: cache->_curveGroups)
+                            {
+                                size_t ncurve = group._numVertices.size();
+                                for (size_t icurve = 0; icurve < ncurve; icurve += _furCurveIncr)
+                                {
+                                    size_t nvert = group._numVertices[icurve];
+                                    if (group._supportMeshId == ids._meshInFurIdx)
+                                    {
+                                        for (size_t ivert = 0; ivert < nvert; ++ivert)
+                                        {
+                                            GfVec3f globalPos(vsrc[inputIndex + ivert].getFloatValues());
+                                            vdst.push_back(globalPos - skinMeshEntityFrameData->pos);
+                                        }
+                                    }
+                                    inputIndex += nvert;
+                                }
+                            }
+
+                            // scale widths
+
+                            size_t nwidth = furTemplateData->unscaledWidths.size();
+                            if (nwidth > 0)
+                            {
+                                auto entityIndex = entityData->inputGeoData._entityIndex;
+                                const glm::crowdio::GlmSimulationData *simuData = entityData->inputGeoData._simuData;
+                                float scale = simuData->_scales[entityIndex];
+                                const VtFloatArray& wsrc = furTemplateData->unscaledWidths;
+                                VtFloatArray& wdst = furData->widths;
+                                wdst.resize(nwidth);
+                                for (size_t iwidth = 0; iwidth < nwidth; ++iwidth)
+                                {
+                                    wdst[iwidth] = scale * wsrc[iwidth];
+                                }
+                            }
+                        }
+                    }
                 }
             }
             return skinMeshEntityFrameData;
@@ -3827,11 +4183,6 @@ namespace glm
         //-----------------------------------------------------------------------------
         void GolaemUSD_DataImpl::_ComputeSkinMeshTemplateData(std::map<std::pair<int, int>, SkinMeshTemplateData::SP>& lodTemplateData, const glm::crowdio::InputEntityGeoData& inputGeoData, const glm::crowdio::OutputEntityGeoData& outputData)
         {
-            glm::GlmString materialPath = _params.glmMaterialPath.GetText();
-            GolaemMaterialAssignMode::Value materialAssignMode = (GolaemMaterialAssignMode::Value)_params.glmMaterialAssignMode;
-
-            const glm::PODArray<int>& shadingGroupToSurfaceShader = _sgToSsPerChar[inputGeoData._characterIdx];
-
             glm::GlmString meshName, meshAlias, materialSuffix;
 
             size_t meshCount = outputData._meshAssetNameIndices.size();
@@ -4070,54 +4421,187 @@ namespace glm
                         }
                     }
                 }
-                int shadingGroupIdx = outputData._meshShadingGroups[iRenderMesh];
 
-                glm::GlmString materialName = "";
-                if (shadingGroupIdx >= 0)
+                if (_params.glmMaterialAssignMode != GolaemMaterialAssignMode::NO_ASSIGNMENT)
                 {
-                    const glm::ShadingGroup& shGroup = inputGeoData._character->_shadingGroups[shadingGroupIdx];
-                    materialName = materialPath;
-                    materialName.rtrim("/");
-                    materialName += "/";
-                    switch (materialAssignMode)
-                    {
-                    case GolaemMaterialAssignMode::BY_SHADING_GROUP:
-                    {
-                        materialName += TfMakeValidIdentifier(shGroup._name.c_str());
-                    }
-                    break;
-                    case GolaemMaterialAssignMode::BY_SURFACE_SHADER:
-                    {
-                        // get the surface shader
-                        int shaderAssetIdx = shadingGroupToSurfaceShader[shadingGroupIdx];
-                        if (shaderAssetIdx >= 0)
-                        {
-                            const glm::ShaderAsset& shAsset = inputGeoData._character->_shaderAssets[shaderAssetIdx];
-                            materialName += TfMakeValidIdentifier(shAsset._name.c_str());
-                        }
-                        else
-                        {
-                            materialName += "DefaultGolaemMat";
-                        }
-                    }
-                    break;
-                    default:
-                        break;
-                    }
-                }
-
-                if (materialAssignMode != GolaemMaterialAssignMode::NO_ASSIGNMENT)
-                {
-                    if (!materialName.empty())
-                    {
-                        meshTemplateData->materialPath = SdfPathListOp::CreateExplicit({SdfPath(materialName.c_str())});
-                    }
-                    else
+                    GlmString materialName = _GetMaterialForShadingGroup(
+                        inputGeoData._character, inputGeoData._characterIdx,
+                        outputData._meshShadingGroups[iRenderMesh]);
+                    if (materialName.empty())
                     {
                         meshTemplateData->materialPath = (*_skinMeshRelationships)[_skinMeshRelationshipTokens->materialBinding].defaultTargetPath;
                     }
+                    else
+                    {
+                        meshTemplateData->materialPath = SdfPathListOp::CreateExplicit({SdfPath(materialName.c_str())});
+                    }
                 }
             }
+        }
+
+        //-----------------------------------------------------------------------------
+        void GolaemUSD_DataImpl::_ComputeFurTemplateData(
+            std::map<int, FurTemplateData::SP>& furTemplateDataMap,
+            const glm::crowdio::InputEntityGeoData& inputGeoData,
+            const glm::crowdio::OutputEntityGeoData& outputData)
+        {
+            const auto& idsArray = outputData._furIdsArray;
+
+            for (size_t ifur = 0; ifur < idsArray.size(); ++ifur)
+            {
+                const glm::crowdio::FurIds& ids = idsArray[ifur];
+                int assetIndex = static_cast<int>(ids._furAssetIdx);
+
+                FurTemplateData::SP furTemplateData = new FurTemplateData();
+                furTemplateDataMap[assetIndex] = furTemplateData;
+
+                // iterate over curves a first time to count the curves and
+                // vertices, and to see whether widths and UVs are provided
+
+                const glm::crowdio::FurCache::SP& cache =
+                    outputData._furCacheArray[ids._furCacheIdx];
+
+                int curveCount = 0;
+                int vertexCount = 0;
+                bool hasWidths = false;
+                bool hasUVs = false;
+
+                for (const glm::crowdio::FurCurveGroup& group: cache->_curveGroups)
+                {
+                    if (group._supportMeshId == ids._meshInFurIdx)
+                    {
+                        size_t ncurve = group._numVertices.size();
+                        for (size_t icurve = 0; icurve < ncurve; icurve += _furCurveIncr)
+                        {
+                            ++curveCount;
+                            vertexCount += group._numVertices[icurve];
+                            hasWidths = hasWidths || group._widths.size() > 0;
+                            hasUVs = hasUVs || group._uvs.size() > 0;
+                        }
+                    }
+                }
+
+                // create vertex counts, widths, UVs and default points
+
+                furTemplateData->defaultPoints.assign(vertexCount, GfVec3f(0));
+                furTemplateData->vertexCounts.reserve(curveCount);
+                if (hasWidths)
+                {
+                    furTemplateData->unscaledWidths.reserve(vertexCount);
+                }
+                if (hasUVs)
+                {
+                    furTemplateData->uvs.reserve(vertexCount);
+                }
+
+                for (const glm::crowdio::FurCurveGroup& group: cache->_curveGroups)
+                {
+                    if (group._supportMeshId != ids._meshInFurIdx)
+                    {
+                        continue;
+                    }
+                    size_t inputIndex = 0;
+                    size_t ncurve = group._numVertices.size();
+                    for (size_t icurve = 0; icurve < ncurve; icurve += _furCurveIncr)
+                    {
+                        int nvert = group._numVertices[icurve];
+                        furTemplateData->vertexCounts.push_back(static_cast<int>(nvert));
+                        for (size_t ivert = 0; ivert < nvert; ++ivert)
+                        {
+                            if (hasWidths)
+                            {
+                                if (group._widths.empty())
+                                {
+                                    furTemplateData->unscaledWidths.push_back(0);
+                                }
+                                else
+                                {
+                                    furTemplateData->unscaledWidths.push_back(group._widths[inputIndex]);
+                                }
+                            }
+                            if (hasUVs)
+                            {
+                                if (group._uvs.empty())
+                                {
+                                    furTemplateData->uvs.emplace_back(0.0f);
+                                }
+                                else
+                                {
+                                    furTemplateData->uvs.emplace_back(
+                                        group._uvs[inputIndex][0],
+                                        group._uvs[inputIndex][1]);
+                                }
+                            }
+                            ++inputIndex;
+                        }
+                    }
+                }
+
+                // fur alias
+
+                const glm::MeshAsset& asset = inputGeoData._character->_meshAssets[ids._furAssetIdx];
+                furTemplateData->furAlias = asset._exportAlias;
+                if (furTemplateData->furAlias.empty())
+                {
+                    furTemplateData->furAlias = asset._name;
+                }
+
+                // material path
+
+                if (_params.glmMaterialAssignMode != GolaemMaterialAssignMode::NO_ASSIGNMENT)
+                {
+                    GlmString materialName = _GetMaterialForShadingGroup(
+                        inputGeoData._character, inputGeoData._characterIdx,
+                        outputData._furShadingGroups[ifur]);
+                    if (materialName.empty())
+                    {
+                        furTemplateData->materialPath = (*_furRelationships)[_furRelationshipTokens->materialBinding].defaultTargetPath;
+                    }
+                    else
+                    {
+                        furTemplateData->materialPath = SdfPathListOp::CreateExplicit({SdfPath(materialName.c_str())});
+                    }
+                }
+            }
+        }
+
+        //-----------------------------------------------------------------------------
+        GlmString GolaemUSD_DataImpl::_GetMaterialForShadingGroup(
+            const GolaemCharacter *character, int characterIdx,
+            int shadingGroupIdx) const
+        {
+            GlmString materialName;
+            if (shadingGroupIdx >= 0)
+            {
+                GlmString materialPath = _params.glmMaterialPath.GetText();
+                const ShadingGroup& shGroup = character->_shadingGroups[shadingGroupIdx];
+                materialName = materialPath;
+                materialName.rtrim("/");
+                materialName += "/";
+                switch (_params.glmMaterialAssignMode)
+                {
+                case GolaemMaterialAssignMode::BY_SHADING_GROUP:
+                {
+                    materialName += TfMakeValidIdentifier(shGroup._name.c_str());
+                }
+                break;
+                case GolaemMaterialAssignMode::BY_SURFACE_SHADER:
+                {
+                    int shaderAssetIdx = _sgToSsPerChar[characterIdx][shadingGroupIdx];
+                    if (shaderAssetIdx >= 0)
+                    {
+                        const ShaderAsset& shAsset = character->_shaderAssets[shaderAssetIdx];
+                        materialName += TfMakeValidIdentifier(shAsset._name.c_str());
+                    }
+                    else
+                    {
+                        materialName += "DefaultGolaemMat";
+                    }
+                }
+                break;
+                }
+            }
+            return materialName;
         }
 
         //-----------------------------------------------------------------------------
