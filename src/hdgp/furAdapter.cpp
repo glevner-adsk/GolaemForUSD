@@ -21,6 +21,11 @@ using Time = HdSampledDataSource::Time;
 using glm::crowdio::FurCache;
 using glm::crowdio::FurCurveGroup;
 
+TF_DEFINE_PRIVATE_TOKENS(
+    furAdapterTokens,
+    (st)
+);
+
 namespace glmhydra {
 
 /*
@@ -255,7 +260,7 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
 {
     VtTokenArray dataNames;
     VtArray<HdDataSourceBaseHandle> dataSources;
-    size_t capacity = 2 + _perCurvePrimvars.size();
+    size_t capacity = 3 + _perCurvePrimvars.size();
 
     if (_customPrimvars) {
         capacity += _customPrimvars->size();
@@ -294,6 +299,23 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
 
         dataNames.push_back(HdPrimvarsSchemaTokens->widths);
         dataSources.push_back(widthDataSource);
+    }
+
+    // per-vertex UVs, if the fur contains UVs
+
+    if (_uvs.size() > 0) {
+        HdContainerDataSourceHandle uvDataSource =
+            HdPrimvarSchema::Builder()
+            .SetPrimvarValue(
+                HdRetainedTypedSampledDataSource<VtVec2fArray>::New(_uvs))
+            .SetInterpolation(GetVertexInterpDataSource())
+            .SetRole(
+                HdPrimvarSchema::BuildRoleDataSource(
+                    HdPrimvarSchemaTokens->textureCoordinate))
+            .Build();
+
+        dataNames.push_back(furAdapterTokens->st);
+        dataSources.push_back(uvDataSource);
     }
 
     // per-entity (constant) attributes
