@@ -108,8 +108,8 @@ allows you to render only some of the fur, _e.g._ 1% or 10%. And
 `primvars:furRefineLevel` allows you to render fur curves with more detail.
 
 Note that, by default, the Storm render delegate ignores fur widths, rendering
-curves as infinitely thin lines. To get Storm to render fur curves as ribbons,
-you must set `primvars:furRefineLevel` to 1 or more.
+curves as infinitely thin lines. To get Storm to render fur curves as tubes, you
+must set `primvars:furRefineLevel` to 1 or more.
 
 
 Instancing of Rigid Crowd Entities
