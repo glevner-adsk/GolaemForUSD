@@ -915,10 +915,18 @@ namespace glm
                             meshTokens.insert(meshTokens.end(), _skinMeshRelationshipTokens->allTokens.begin(), _skinMeshRelationshipTokens->allTokens.end());
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(meshTokens);
                         }
-                        if (TfMapLookupPtr(_furDataMap, path) != NULL)
+                        if (const FurMapData *furMapData = TfMapLookupPtr(_furDataMap, path))
                         {
                             std::vector<TfToken> furTokens = _furPropertyTokens->allTokens;
                             furTokens.insert(furTokens.end(), _furRelationshipTokens->allTokens.begin(), _furRelationshipTokens->allTokens.end());
+                            for (const auto& [name, floats]: furMapData->templateData->floatProperties)
+                            {
+                                furTokens.push_back(name);
+                            }
+                            for (const auto& [name, vectors]: furMapData->templateData->vector3Properties)
+                            {
+                                furTokens.push_back(name);
+                            }
                             RETURN_TRUE_WITH_OPTIONAL_VALUE(furTokens);
                         }
                     }
@@ -1070,6 +1078,20 @@ namespace glm
                     for (const TfToken& propertyName : _furRelationshipTokens->allTokens)
                     {
                         if (!visitor->VisitSpec(data, it.first.AppendProperty(propertyName)))
+                        {
+                            return;
+                        }
+                    }
+                    for (const auto& [name, value]: it.second.templateData->floatProperties)
+                    {
+                        if (!visitor->VisitSpec(data, it.first.AppendProperty(name)))
+                        {
+                            return;
+                        }
+                    }
+                    for (const auto& [name, value]: it.second.templateData->vector3Properties)
+                    {
+                        if (!visitor->VisitSpec(data, it.first.AppendProperty(name)))
                         {
                             return;
                         }
@@ -2940,10 +2962,9 @@ namespace glm
                         return true;
                     }
                 }
-                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                if (const FurMapData* furMapData = TfMapLookupPtr(_furDataMap, primPath))
                 {
-                    // Check that it belongs to a leaf prim before getting the default value
-                    if (const FurMapData* furMapData = TfMapLookupPtr(_furDataMap, primPath))
+                    if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
                     {
                         if (value)
                         {
@@ -2969,6 +2990,14 @@ namespace glm
                             }
                         }
                         return true;
+                    }
+                    if (const VtFloatArray *floats = TfMapLookupPtr(furMapData->templateData->floatProperties, nameToken))
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(*floats);
+                    }
+                    if (const VtVec3fArray *vectors = TfMapLookupPtr(furMapData->templateData->vector3Properties, nameToken))
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(*vectors);
                     }
                 }
                 if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
@@ -4613,16 +4642,27 @@ namespace glm
 
                 // per-curve properties
 
+                GlmString attributeNamespace = _params.glmAttributeNamespace.GetText();
+                attributeNamespace.rtrim(":");
+
                 for (size_t i = 0; i < floatPropCount; ++i)
                 {
-                    TfToken propname(firstGroup._floatPropertiesNames[i].c_str());
-                    furTemplateData->floatProperties[propname] = floatProps[i];
+                    GlmString propname = firstGroup._floatPropertiesNames[i];
+                    if (!attributeNamespace.empty())
+                    {
+                        propname = attributeNamespace + ":" + propname;
+                    }
+                    furTemplateData->floatProperties[TfToken(propname.c_str())] = floatProps[i];
                 }
 
                 for (size_t i = 0; i < vector3PropCount; ++i)
                 {
-                    TfToken propname(firstGroup._vector3PropertiesNames[i].c_str());
-                    furTemplateData->vector3Properties[propname] = vector3Props[i];
+                    GlmString propname = firstGroup._vector3PropertiesNames[i];
+                    if (!attributeNamespace.empty())
+                    {
+                        propname = attributeNamespace + ":" + propname;
+                    }
+                    furTemplateData->vector3Properties[TfToken(propname.c_str())] = vector3Props[i];
                 }
 
                 // fur alias
