@@ -324,7 +324,7 @@ namespace glm
             (*_furProperties)[_furPropertyTokens->uvs].defaultValue = VtValue(VtVec2fArray());
             (*_furProperties)[_furPropertyTokens->uvs].isAnimated = false;
 
-            // TODO: velocities, fur attributes
+            // TODO: velocities
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -583,16 +583,15 @@ namespace glm
                             return SdfSpecTypeRelationship;
                         }
                     }
-                    if (TfMapLookupPtr(*_furProperties, nameToken) != NULL)
+                    if (const FurMapData *furMapData = TfMapLookupPtr(_furDataMap, primPath))
                     {
-                        if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
+                        if (TfMapLookupPtr(*_furProperties, nameToken) ||
+                            TfMapLookupPtr(furMapData->templateData->floatProperties, nameToken) ||
+                            TfMapLookupPtr(furMapData->templateData->vector3Properties, nameToken))
                         {
                             return SdfSpecTypeAttribute;
                         }
-                    }
-                    if (TfMapLookupPtr(*_furRelationships, nameToken) != NULL)
-                    {
-                        if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
+                        if (TfMapLookupPtr(*_furRelationships, nameToken))
                         {
                             return SdfSpecTypeRelationship;
                         }
@@ -1226,9 +1225,9 @@ namespace glm
                                 return relationshipFields;
                             }
                         }
-                        if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                        if (const FurMapData *furMapData = TfMapLookupPtr(_furDataMap, primPath))
                         {
-                            if (TfMapLookupPtr(_furDataMap, primPath))
+                            if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
                             {
                                 // Include time sample field in the property is animated.
                                 if (propInfo->isAnimated)
@@ -1248,10 +1247,12 @@ namespace glm
                                     return nonAnimPropFields;
                                 }
                             }
-                        }
-                        if (TfMapLookupPtr(*_furRelationships, nameToken) != NULL)
-                        {
-                            if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
+                            if (TfMapLookupPtr(furMapData->templateData->floatProperties, nameToken) ||
+                                TfMapLookupPtr(furMapData->templateData->vector3Properties, nameToken))
+                            {
+                                return nonAnimPropFields;
+                            }
+                            if (TfMapLookupPtr(*_furRelationships, nameToken))
                             {
                                 return relationshipFields;
                             }
@@ -3115,30 +3116,28 @@ namespace glm
                     // Check that it belongs to a leaf prim before getting the interpolation value
                     if (TfMapLookupPtr(_skinMeshDataMap, primPath) != NULL)
                     {
-                        if (value)
+                        if (value && propInfo->hasInterpolation)
                         {
-                            if (propInfo->hasInterpolation)
-                            {
-                                *value = VtValue(propInfo->interpolation);
-                            }
+                            *value = VtValue(propInfo->interpolation);
                         }
                         return propInfo->hasInterpolation;
                     }
                     return false;
                 }
-                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                if (const FurMapData *furMapData = TfMapLookupPtr(_furDataMap, primPath))
                 {
-                    // Check that it belongs to a leaf prim before getting the interpolation value
-                    if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
+                    if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
                     {
-                        if (value)
+                        if (value && propInfo->hasInterpolation)
                         {
-                            if (propInfo->hasInterpolation)
-                            {
-                                *value = VtValue(propInfo->interpolation);
-                            }
+                            *value = VtValue(propInfo->interpolation);
                         }
                         return propInfo->hasInterpolation;
+                    }
+                    if (TfMapLookupPtr(furMapData->templateData->floatProperties, nameToken) ||
+                        TfMapLookupPtr(furMapData->templateData->vector3Properties, nameToken))
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(UsdGeomTokens->uniform);
                     }
                     return false;
                 }
@@ -3200,13 +3199,13 @@ namespace glm
                             {
                                 // this is a float PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_FLOAT - 1; // enum starts at 1
-                                *value = TfToken(_ppAttrTypes[attrTypeIdx].c_str());
+                                *value = VtValue(_ppAttrTypes[attrTypeIdx]);
                             }
                             else
                             {
                                 // this is a vector PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_VECTOR - 1; // enum starts at 1
-                                *value = TfToken(_ppAttrTypes[attrTypeIdx].c_str());
+                                *value = VtValue(_ppAttrTypes[attrTypeIdx]);
                             }
                         }
                         return true;
@@ -3214,7 +3213,7 @@ namespace glm
                     if (const size_t* shaderAttrIdx = TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken))
                     {
                         const glm::ShaderAttribute& shaderAttr = (*entityDataPtr)->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken(_shaderAttrTypes[shaderAttr._type].c_str()));
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(_shaderAttrTypes[shaderAttr._type]);
                     }
                 }
             }
@@ -3250,12 +3249,19 @@ namespace glm
 
                     return false;
                 }
-                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                if (const FurMapData *furMapData = TfMapLookupPtr(_furDataMap, primPath))
                 {
-                    // Check that it belongs to a leaf prim before getting the type name value
-                    if (TfMapLookupPtr(_furDataMap, primPath) != NULL)
+                    if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
                     {
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(propInfo->typeName);
+                    }
+                    if (TfMapLookupPtr(furMapData->templateData->floatProperties, nameToken))
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(_shaderAttrTypes[ShaderAttributeType::FLOAT]);
+                    }
+                    if (TfMapLookupPtr(furMapData->templateData->vector3Properties, nameToken))
+                    {
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(_shaderAttrTypes[ShaderAttributeType::VECTOR]);
                     }
 
                     return false;
@@ -3270,13 +3276,13 @@ namespace glm
                             {
                                 // this is a float PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_FLOAT - 1; // enum starts at 1
-                                *value = TfToken(_ppAttrTypes[attrTypeIdx].c_str());
+                                *value = VtValue(_ppAttrTypes[attrTypeIdx]);
                             }
                             else
                             {
                                 // this is a vector PP attribute
                                 int attrTypeIdx = crowdio::GSC_PP_VECTOR - 1; // enum starts at 1
-                                *value = TfToken(_ppAttrTypes[attrTypeIdx].c_str());
+                                *value = VtValue(_ppAttrTypes[attrTypeIdx]);
                             }
                         }
                         return true;
@@ -3284,7 +3290,7 @@ namespace glm
                     if (const size_t* shaderAttrIdx = TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken))
                     {
                         const glm::ShaderAttribute& shaderAttr = (*entityDataPtr)->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(TfToken(_shaderAttrTypes[shaderAttr._type].c_str()));
+                        RETURN_TRUE_WITH_OPTIONAL_VALUE(_shaderAttrTypes[shaderAttr._type]);
                     }
                 }
             }
@@ -4491,6 +4497,35 @@ namespace glm
                     }
                 }
 
+                if (curveCount == 0)
+                {
+                    continue;
+                }
+
+                // the curve type and per-curve properties are determined by the
+                // first group; we assume they are the same for all the groups
+
+                const glm::crowdio::FurCurveGroup& firstGroup = cache->_curveGroups[0];
+
+                furTemplateData->curveDegree = (firstGroup._curveDegrees == 1)
+                    ? UsdGeomTokens->linear
+                    : UsdGeomTokens->cubic;
+
+                size_t floatPropCount = firstGroup._floatPropertiesNames.size();
+                size_t vector3PropCount = firstGroup._vector3PropertiesNames.size();
+                std::vector<VtFloatArray> floatProps(floatPropCount);
+                std::vector<VtVec3fArray> vector3Props(vector3PropCount);
+
+                for (size_t i = 0; i < floatPropCount; ++i)
+                {
+                    floatProps[i].reserve(curveCount);
+                }
+
+                for (size_t i = 0; i < vector3PropCount; ++i)
+                {
+                    vector3Props[i].reserve(curveCount);
+                }
+
                 // create vertex counts, widths, UVs and default points
 
                 furTemplateData->defaultPoints.assign(vertexCount, GfVec3f(0));
@@ -4510,6 +4545,8 @@ namespace glm
                     {
                         continue;
                     }
+
+                    // vertex counts, widths, UVs for each curve
 
                     size_t inputIndex = 0;
                     size_t ncurve = group._numVertices.size();
@@ -4547,12 +4584,45 @@ namespace glm
                         }
                     }
 
-                    if (furTemplateData->curveDegree.IsEmpty())
+                    // property values for this group of curves
+
+                    if (group._floatProperties.size() == floatPropCount)
                     {
-                        furTemplateData->curveDegree = group._curveDegrees == 1
-                            ? UsdGeomTokens->linear
-                            : UsdGeomTokens->cubic;
+                        for (size_t i = 0; i < floatPropCount; ++i)
+                        {
+                            VtFloatArray& dst = floatProps[i];
+                            for (float value: group._floatProperties[i])
+                            {
+                                dst.push_back(value);
+                            }
+                        }
                     }
+
+                    if (group._vector3Properties.size() == vector3PropCount)
+                    {
+                        for (size_t i = 0; i < vector3PropCount; ++i)
+                        {
+                            VtVec3fArray& dst = vector3Props[i];
+                            for (const glm::Vector3& src: group._vector3Properties[i])
+                            {
+                                dst.emplace_back(src.getFloatValues());
+                            }
+                        }
+                    }
+                }
+
+                // per-curve properties
+
+                for (size_t i = 0; i < floatPropCount; ++i)
+                {
+                    TfToken propname(firstGroup._floatPropertiesNames[i].c_str());
+                    furTemplateData->floatProperties[propname] = floatProps[i];
+                }
+
+                for (size_t i = 0; i < vector3PropCount; ++i)
+                {
+                    TfToken propname(firstGroup._vector3PropertiesNames[i].c_str());
+                    furTemplateData->vector3Properties[propname] = vector3Props[i];
                 }
 
                 // fur alias

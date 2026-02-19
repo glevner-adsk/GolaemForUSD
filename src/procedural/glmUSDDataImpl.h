@@ -141,6 +141,8 @@ namespace glm
                 VtFloatArray unscaledWidths;
                 SdfPathListOp materialPath;
                 TfToken curveDegree;
+                std::map<TfToken, VtFloatArray, TfTokenFastArbitraryLessThan> floatProperties;
+                std::map<TfToken, VtVec3fArray, TfTokenFastArbitraryLessThan> vector3Properties;
             };
 
             struct FurData : public glm::ReferenceCounter
@@ -250,10 +252,10 @@ namespace glm
             glm::Array<glm::Array<std::map<std::pair<int, int>, SkinMeshTemplateData::SP>>> _skinMeshTemplateDataPerCharPerGeomFile;
             glm::Array<glm::Array<std::map<int, FurTemplateData::SP>>> _furTemplateDataPerCharPerGeomFile;
 
-            glm::Array<GlmString> _shaderAttrTypes;
+            glm::Array<TfToken> _shaderAttrTypes;
             glm::Array<VtValue> _shaderAttrDefaultValues;
 
-            glm::Array<GlmString> _ppAttrTypes;
+            glm::Array<TfToken> _ppAttrTypes;
             glm::Array<VtValue> _ppAttrDefaultValues;
 
             int _startFrame;
