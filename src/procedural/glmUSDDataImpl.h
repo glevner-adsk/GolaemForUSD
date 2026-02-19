@@ -140,6 +140,7 @@ namespace glm
                 VtVec3fArray defaultPoints;
                 VtFloatArray unscaledWidths;
                 SdfPathListOp materialPath;
+                TfToken curveDegree;
             };
 
             struct FurData : public glm::ReferenceCounter

@@ -100,6 +100,8 @@ namespace glm
             (points)
             (widths)
             ((uvs, "primvars:st"))
+            (basis)
+            (type)
         );
 
         TF_DEFINE_PRIVATE_TOKENS(
@@ -313,8 +315,16 @@ namespace glm
             (*_furProperties)[_furPropertyTokens->curveVertexCounts].defaultValue = VtValue(VtIntArray());
             (*_furProperties)[_furPropertyTokens->curveVertexCounts].isAnimated = false;
 
+            (*_furProperties)[_furPropertyTokens->basis].defaultValue = UsdGeomTokens->catmullRom;
+            (*_furProperties)[_furPropertyTokens->basis].isAnimated = false;
+
+            (*_furProperties)[_furPropertyTokens->type].defaultValue = UsdGeomTokens->cubic;
+            (*_furProperties)[_furPropertyTokens->type].isAnimated = false;
+
             (*_furProperties)[_furPropertyTokens->uvs].defaultValue = VtValue(VtVec2fArray());
             (*_furProperties)[_furPropertyTokens->uvs].isAnimated = false;
+
+            // TODO: velocities, fur attributes
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -4500,6 +4510,7 @@ namespace glm
                     {
                         continue;
                     }
+
                     size_t inputIndex = 0;
                     size_t ncurve = group._numVertices.size();
                     for (size_t icurve = 0; icurve < ncurve; icurve += _furCurveIncr)
@@ -4534,6 +4545,13 @@ namespace glm
                             }
                             ++inputIndex;
                         }
+                    }
+
+                    if (furTemplateData->curveDegree.IsEmpty())
+                    {
+                        furTemplateData->curveDegree = group._curveDegrees == 1
+                            ? UsdGeomTokens->linear
+                            : UsdGeomTokens->cubic;
                     }
                 }
 
