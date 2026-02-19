@@ -64,10 +64,7 @@ public:
         const PrimvarDSMapRef& customPrimvars);
 
     PXR_NS::HdContainerDataSourceHandle GetDataSource() const override;
-
-    bool HasVariableXform() const override {
-        return true;
-    }
+    PXR_NS::HdDataSourceLocatorSet GetVariableDataSources() const override;
 
 private:
     PXR_NS::HdContainerDataSourceHandle GetXformDataSource() const;

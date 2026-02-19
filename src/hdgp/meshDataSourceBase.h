@@ -1,5 +1,6 @@
 #pragma once
 
+#include <pxr/imaging/hd/dataSourceLocator.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 
 namespace glmhydra {
@@ -16,7 +17,7 @@ public:
     virtual ~MeshDataSourceBase() {}
 
     virtual PXR_NS::HdContainerDataSourceHandle GetDataSource() const = 0;
-    virtual bool HasVariableXform() const = 0;
+    virtual PXR_NS::HdDataSourceLocatorSet GetVariableDataSources() const = 0;
 };
 
 }  // namespace glmhydra

@@ -1728,19 +1728,10 @@ HdGpGenerativeProcedural::ChildPrimTypeMap GolaemProcedural::Update(
                 _childIndexPairs[childPath] = {i, j};
 
                 if (previousResult.size() > 0) {
-                    if (updateAll) {
-                        outputDirtiedPrims->emplace_back(
-                            childPath, HdDataSourceLocatorSet::UniversalSet());
-                    } else {
-                        HdDataSourceLocatorSet locators = {
-                            HdPrimvarsSchema::GetPointsLocator(),
-                            HdPrimvarsSchema::GetNormalsLocator()
-                        };
-                        if (entity.meshes[j]->HasVariableXform()) {
-                            locators.append(HdXformSchema::GetDefaultLocator());
-                        }
-                        outputDirtiedPrims->emplace_back(childPath, locators);
-                    }
+                    outputDirtiedPrims->emplace_back(
+                        childPath, updateAll
+                        ? HdDataSourceLocatorSet::UniversalSet()
+                        : entity.meshes[j]->GetVariableDataSources());
                 }
             }
 

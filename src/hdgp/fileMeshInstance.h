@@ -30,10 +30,7 @@ public:
     // TODO: variant of SetTransform() with shutter offsets
 
     PXR_NS::HdContainerDataSourceHandle GetDataSource() const override;
-
-    bool HasVariableXform() const override {
-        return kEnableRigidEntities && _adapter->IsRigid();
-    }
+    PXR_NS::HdDataSourceLocatorSet GetVariableDataSources() const override;
 
 private:
     PXR_NS::HdContainerDataSourceHandle GetPrimvarsDataSource() const;

@@ -446,4 +446,15 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetDataSource() const
         dataNames.size(), dataNames.cdata(), dataSources.cdata());
 }
 
+HdDataSourceLocatorSet FbxMeshAdapter::GetVariableDataSources() const
+{
+    // actually, all primvars except for UV coordinates can vary from frame to
+    // frame, but giving Hydra a list of all those locators seems to slow it
+    // down more than just telling it that all primvars may vary
+
+    HdDataSourceLocatorSet locators(HdPrimvarsSchema::GetDefaultLocator());
+    locators.append(HdXformSchema::GetDefaultLocator());
+    return locators;
+}
+
 }  // namespace glmhydra
