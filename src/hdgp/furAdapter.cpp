@@ -95,7 +95,19 @@ FurAdapter::FurAdapter(
         _uvs.reserve(totalVertexCount);
     }
 
-    // fill in vertex counts, indices, widths and UVs
+    size_t floatPropCount = firstGroup._floatProperties.size();
+    std::vector<VtFloatArray> floatPropValues(floatPropCount);
+    for (size_t i = 0; i < floatPropCount; ++i) {
+        floatPropValues[i].reserve(totalCurveCount);
+    }
+
+    size_t vector3PropCount = firstGroup._vector3Properties.size();
+    std::vector<VtVec3fArray> vector3PropValues(vector3PropCount);
+    for (size_t i = 0; i < vector3PropCount; ++i) {
+        vector3PropValues[i].reserve(totalCurveCount);
+    }
+
+    // fill in vertex counts, indices, widths, UVs and properties
 
     size_t outputIndex = 0;
 
@@ -136,32 +148,40 @@ FurAdapter::FurAdapter(
                 ++outputIndex;
             }
         }
+
+        if (group._floatProperties.size() == floatPropCount) {
+            for (size_t i = 0; i < floatPropCount; ++i) {
+                VtFloatArray& dst = floatPropValues[i];
+                for (float value: group._floatProperties[i]) {
+                    dst.push_back(value);
+                }
+            }
+        }
+
+        if (group._vector3Properties.size() == vector3PropCount) {
+            for (size_t i = 0; i < vector3PropCount; ++i) {
+                VtVec3fArray& dst = vector3PropValues[i];
+                for (const glm::Vector3& vec3: group._vector3Properties[i]) {
+                    dst.emplace_back(vec3.getFloatValues());
+                }
+            }
+        }
     }
 
-    // if the fur has per-curve properties, copy their values one time only
-
-    size_t floatPropCount = firstGroup._floatProperties.size();
+    // create Hydra data sources for per-curve properties
 
     for (size_t i = 0; i < floatPropCount; ++i) {
-        const glm::GlmString glmName = firstGroup._floatPropertiesNames[i];
-        const glm::Array<float>& glmValues = firstGroup._floatProperties[i];
-        VtFloatArray values(glmValues.begin(), glmValues.end());
-
+        const glm::GlmString& glmName = firstGroup._floatPropertiesNames[i];
         _perCurvePrimvars[TfToken(glmName.c_str())] =
-            HdRetainedTypedSampledDataSource<VtFloatArray>::New(values);
+            HdRetainedTypedSampledDataSource<VtFloatArray>::New(
+                floatPropValues[i]);
     }
 
-    size_t vector3PropCount = firstGroup._vector3Properties.size();
-
     for (size_t i = 0; i < vector3PropCount; ++i) {
-        const glm::GlmString glmName = firstGroup._vector3PropertiesNames[i];
-        const glm::Array<glm::Vector3>& glmValues =
-            firstGroup._vector3Properties[i];
-        VtVec3fArray values;
-        CopyGlmVecArrayToVt(values, glmValues);
-
+        const glm::GlmString& glmName = firstGroup._vector3PropertiesNames[i];
         _perCurvePrimvars[TfToken(glmName.c_str())] =
-            HdRetainedTypedSampledDataSource<VtVec3fArray>::New(values);
+            HdRetainedTypedSampledDataSource<VtVec3fArray>::New(
+                vector3PropValues[i]);
     }
 }
 
