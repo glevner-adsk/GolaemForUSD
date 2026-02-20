@@ -37,6 +37,7 @@ USD_INCLUDES_END
 
 #include <glmIdsFilter.h>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 
@@ -1924,7 +1925,7 @@ namespace glm
                 usdCharacterFiles = _params.glmUsdCharacterFiles.GetText();
             }
 
-            _furCurveIncr = std::lround(100.0f / _params.glmFurRenderPercent);
+            _furCurveIncr = std::max(1l, std::lround(100.0f / _params.glmFurRenderPercent));
 
             float renderPercent = _params.glmRenderPercent * 0.01f;
 
@@ -4027,10 +4028,10 @@ namespace glm
                             for (const glm::crowdio::FurCurveGroup& group: cache->_curveGroups)
                             {
                                 size_t ncurve = group._numVertices.size();
-                                for (size_t icurve = 0; icurve < ncurve; icurve += _furCurveIncr)
+                                for (size_t icurve = 0; icurve < ncurve; ++icurve)
                                 {
                                     size_t nvert = group._numVertices[icurve];
-                                    if (group._supportMeshId == ids._meshInFurIdx)
+                                    if (icurve % _furCurveIncr == 0 && group._supportMeshId == ids._meshInFurIdx)
                                     {
                                         for (size_t ivert = 0; ivert < nvert; ++ivert)
                                         {
@@ -4651,9 +4652,14 @@ namespace glm
 
                     size_t inputIndex = 0;
                     size_t ncurve = group._numVertices.size();
-                    for (size_t icurve = 0; icurve < ncurve; icurve += _furCurveIncr)
+                    for (size_t icurve = 0; icurve < ncurve; ++icurve)
                     {
                         int nvert = group._numVertices[icurve];
+                        if (icurve % _furCurveIncr != 0)
+                        {
+                            inputIndex += nvert;
+                            continue;
+                        }
                         furTemplateData->vertexCounts.push_back(static_cast<int>(nvert));
                         for (size_t ivert = 0; ivert < nvert; ++ivert)
                         {
