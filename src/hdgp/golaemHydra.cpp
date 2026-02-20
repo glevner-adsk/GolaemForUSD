@@ -36,7 +36,6 @@
 #include "hydraGlobals.h"
 
 #include <cmath>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -608,7 +607,7 @@ double GetCurrentFrame(const HdSceneIndexBaseRefPtr& inputScene)
         if (frameDS) {
             frame = frameDS->GetTypedValue(0);
             if (std::isnan(frame)) {
-                std::cerr << "[GolaemHydra] changing current frame NAN to 0!\n";
+                TF_WARN("[GolaemHydra] changing current frame NAN to 0!\n");
                 frame = 0;
             }
         }
@@ -1275,8 +1274,8 @@ void GolaemProcedural::GenerateMeshesAndFur(
         glm::crowdio::glmPrepareEntityGeometry(&inputData, &outputData);
 
     if (geoStatus != glm::crowdio::GIO_SUCCESS) {
-        std::cerr << "[GolaemHydra] glmPrepareEntityGeometry() returned error: "
-                  << glmConvertGeometryGenerationStatus(geoStatus) << '\n';
+        TF_WARN("[GolaemHydra] glmPrepareEntityGeometry() returned error: %s\n",
+                glmConvertGeometryGenerationStatus(geoStatus));
         return;
     }
 
