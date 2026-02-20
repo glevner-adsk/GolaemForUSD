@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -220,8 +219,8 @@ void FurAdapter::CopyVertices(
     }
 
     if (dst.size() != _vertexIndices.size()) {
-        std::cerr << "FurAdapter: expected " << _vertexIndices.size()
-                  << " fur vertices, got " << dst.size() << '\n';
+        TF_WARN("[GolaemHydra] FurAdapter: expected %d vertices, got %d\n",
+                _vertexIndices.size(), dst.size());
     }
 }
 
