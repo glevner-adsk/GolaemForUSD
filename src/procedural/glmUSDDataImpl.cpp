@@ -596,7 +596,7 @@ namespace glm
                             return SdfSpecTypeRelationship;
                         }
                     }
-                    if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
+                    else if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                     {
                         if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
                             TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
@@ -1279,7 +1279,7 @@ namespace glm
                                 return relationshipFields;
                             }
                         }
-                        if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
+                        else if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                         {
                             if (TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken) != NULL ||
                                 TfMapLookupPtr((*entityDataPtr)->shaderAttrIndexes, nameToken) != NULL)
@@ -3000,7 +3000,7 @@ namespace glm
                         RETURN_TRUE_WITH_OPTIONAL_VALUE(*vectors);
                     }
                 }
-                if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
+                else if (const EntityData::SP* entityDataPtr = TfMapLookupPtr(_entityDataMap, primPath))
                 {
                     if (const size_t* ppAttrIdx = TfMapLookupPtr((*entityDataPtr)->ppAttrIndexes, nameToken))
                     {
@@ -3138,38 +3138,34 @@ namespace glm
             {
                 return false;
             }
-            else
+            if (TfMapLookupPtr(_skinMeshDataMap, primPath))
             {
                 if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_skinMeshProperties, nameToken))
                 {
-                    // Check that it belongs to a leaf prim before getting the interpolation value
-                    if (TfMapLookupPtr(_skinMeshDataMap, primPath) != NULL)
+                    if (value && propInfo->hasInterpolation)
                     {
-                        if (value && propInfo->hasInterpolation)
-                        {
-                            *value = VtValue(propInfo->interpolation);
-                        }
-                        return propInfo->hasInterpolation;
+                        *value = VtValue(propInfo->interpolation);
                     }
-                    return false;
+                    return propInfo->hasInterpolation;
                 }
-                if (const FurMapData *furMapData = TfMapLookupPtr(_furDataMap, primPath))
+                return false;
+            }
+            if (const FurMapData *furMapData = TfMapLookupPtr(_furDataMap, primPath))
+            {
+                if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
                 {
-                    if (const _PrimPropertyInfo* propInfo = TfMapLookupPtr(*_furProperties, nameToken))
+                    if (value && propInfo->hasInterpolation)
                     {
-                        if (value && propInfo->hasInterpolation)
-                        {
-                            *value = VtValue(propInfo->interpolation);
-                        }
-                        return propInfo->hasInterpolation;
+                        *value = VtValue(propInfo->interpolation);
                     }
-                    if (TfMapLookupPtr(furMapData->templateData->floatProperties, nameToken) ||
-                        TfMapLookupPtr(furMapData->templateData->vector3Properties, nameToken))
-                    {
-                        RETURN_TRUE_WITH_OPTIONAL_VALUE(UsdGeomTokens->uniform);
-                    }
-                    return false;
+                    return propInfo->hasInterpolation;
                 }
+                if (TfMapLookupPtr(furMapData->templateData->floatProperties, nameToken) ||
+                    TfMapLookupPtr(furMapData->templateData->vector3Properties, nameToken))
+                {
+                    RETURN_TRUE_WITH_OPTIONAL_VALUE(UsdGeomTokens->uniform);
+                }
+                return false;
             }
 
             return false;
