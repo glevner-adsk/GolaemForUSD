@@ -409,7 +409,11 @@ HdContainerDataSourceHandle FbxMeshAdapter::GetPrimvarsDataSource() const
     if (_customPrimvars) {
         for (auto it: *_customPrimvars) {
             dataNames.push_back(it.first);
-            dataSources.push_back(it.second);
+            dataSources.push_back(
+                HdPrimvarSchema::Builder()
+                .SetPrimvarValue(it.second)
+                .SetInterpolation(GetConstantInterpDataSource())
+                .Build());
         }
     }
 
