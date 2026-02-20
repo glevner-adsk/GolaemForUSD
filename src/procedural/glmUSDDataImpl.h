@@ -223,6 +223,7 @@ namespace glm
             struct FurMapData
             {
                 EntityData::SP entityData;
+                size_t lodIndex;
                 int furAssetIndex;
                 FurTemplateData::SP templateData;
             };
@@ -396,6 +397,7 @@ namespace glm
             void _InitFurData(
                 const SdfPath& parentPath,
                 EntityData::SP entityData,
+                size_t lodIndex,
                 const std::map<int, FurTemplateData::SP>& templateDataPerFur);
             GlmString _GetMaterialForShadingGroup(
                 const GolaemCharacter *character, int characterIdx,

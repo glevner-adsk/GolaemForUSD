@@ -1649,6 +1649,7 @@ namespace glm
                     else if ((furData = TfMapLookupPtr(_furDataMap, primPath)))
                     {
                         entityData = furData->entityData;
+                        lodIndex = furData->lodIndex;
                         furAssetIndex = furData->furAssetIndex;
                         isFurPath = true;
                     }
@@ -2517,7 +2518,7 @@ namespace glm
                             _InitSkinMeshData(entityData->entityPath, skinMeshEntityData, 0, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
                             if (_params.glmEnableFur)
                             {
-                                _InitFurData(entityData->entityPath, entityData, furTemplateData[geometryFileIdx]);
+                                _InitFurData(entityData->entityPath, entityData, 0, furTemplateData[geometryFileIdx]);
                             }
                         }
                         else
@@ -2539,7 +2540,7 @@ namespace glm
                                 _InitSkinMeshData(lodPath, skinMeshEntityData, iLod, lodTemplateData, gchaMeshIds, meshAssetMaterialIndices);
                                 if (_params.glmEnableFur)
                                 {
-                                    _InitFurData(lodPath, entityData, furTemplateData[iLod]);
+                                    _InitFurData(lodPath, entityData, iLod, furTemplateData[iLod]);
                                 }
                             }
                         }
@@ -2668,6 +2669,7 @@ namespace glm
         void GolaemUSD_DataImpl::_InitFurData(
             const SdfPath& parentPath,
             EntityData::SP entityData,
+            size_t lodIndex,
             const std::map<int, FurTemplateData::SP>& templateDataPerFur)
         {
             for (const auto& [assetIndex, furTemplateData]: templateDataPerFur)
@@ -2676,6 +2678,7 @@ namespace glm
                 SdfPath furPath = _CreateHierarchyFor(furTemplateData->furAlias, parentPath, existingPaths);
                 FurMapData& furMapData = _furDataMap[furPath];
                 furMapData.entityData = entityData;
+                furMapData.lodIndex = lodIndex;
                 furMapData.furAssetIndex = assetIndex;
                 furMapData.templateData = furTemplateData;
             }
