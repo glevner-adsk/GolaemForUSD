@@ -28,7 +28,7 @@
                     "GolaemProceduralPlugin": {
                         "bases": [
                             "HdGpGenerativeProceduralPlugin"
-                        ], 
+                        ],
                         "displayName": "GolaemHydra",
                         "priority": 0
                     }
