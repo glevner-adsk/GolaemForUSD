@@ -139,6 +139,7 @@ namespace glm
                 GlmString furAlias;
                 VtVec3fArray defaultPoints;
                 VtFloatArray unscaledWidths;
+                VtVec3fArray defaultVelocities;
                 SdfPathListOp materialPath;
                 TfToken curveDegree;
                 std::map<TfToken, VtFloatArray, TfTokenFastArbitraryLessThan> floatProperties;
@@ -151,6 +152,7 @@ namespace glm
 
                 VtVec3fArray points;
                 VtFloatArray widths;
+                VtVec3fArray velocities;
 
                 FurTemplateData::SP templateData;
             };
@@ -364,9 +366,14 @@ namespace glm
             SdfPath _CreateHierarchyFor(const glm::GlmString& hierarchy, const SdfPath& parentPath, GlmMap<GlmString, SdfPath>& existingPaths);
             SkelEntityFrameData::SP _ComputeSkelEntity(EntityData::SP entityData, double frame);
             SkinMeshEntityFrameData::SP _ComputeSkinMeshEntity(EntityData::SP entityData, double frame);
-            bool _ComputeVelocities(
+            bool _ComputeMeshVelocities(
                 EntityData::SP entityData, double frame, size_t lodLevel,
                 SkinMeshData::SP meshData, const std::pair<int, int>& meshKey) const;
+            bool _ComputeFurVelocities(
+                EntityData::SP entityData, double frame, size_t lodLevel,
+                FurData::SP furData, int furAssetIndex) const;
+            SkinMeshLodData::SP _GetMeshLodDataAtFrame(
+                EntityData::SP entityData, double frame, size_t lodLevel) const;
             void _ComputeEntity(EntityFrameData::SP entityFrameData, double frame);
             void _InvalidateEntity(EntityFrameData::SP entityFrameData);
             void _getCharacterExtent(EntityData::SP entityData, GfVec3f& extent) const;

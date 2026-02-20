@@ -100,6 +100,7 @@ namespace glm
             (points)
             (widths)
             ((uvs, "primvars:st"))
+            (velocities)
             (basis)
             (type)
         );
@@ -309,6 +310,9 @@ namespace glm
             (*_furProperties)[_furPropertyTokens->points].defaultValue = VtValue(VtVec3fArray());
             (*_furProperties)[_furPropertyTokens->points].isAnimated = true;
 
+            (*_furProperties)[_furPropertyTokens->velocities].defaultValue = VtValue(VtVec3fArray());
+            (*_furProperties)[_furPropertyTokens->velocities].isAnimated = true;
+
             (*_furProperties)[_furPropertyTokens->widths].defaultValue = VtValue(VtFloatArray());
             (*_furProperties)[_furPropertyTokens->widths].isAnimated = false;
 
@@ -323,8 +327,6 @@ namespace glm
 
             (*_furProperties)[_furPropertyTokens->uvs].defaultValue = VtValue(VtVec2fArray());
             (*_furProperties)[_furPropertyTokens->uvs].isAnimated = false;
-
-            // TODO: velocities
 
             // Use the schema to derive the type name tokens from each property's
             // default value.
@@ -1755,6 +1757,14 @@ namespace glm
                                 {
                                     RETURN_TRUE_WITH_OPTIONAL_VALUE(furData->widths);
                                 }
+                                if (nameToken == _furPropertyTokens->velocities)
+                                {
+                                    if (!_params.glmComputeVelocities)
+                                    {
+                                        return false;
+                                    }
+                                    RETURN_TRUE_WITH_OPTIONAL_VALUE(furData->velocities);
+                                }
                             }
                         }
                     }
@@ -1795,6 +1805,14 @@ namespace glm
                             if (nameToken == _furPropertyTokens->widths)
                             {
                                 RETURN_TRUE_WITH_OPTIONAL_VALUE(furTemplateData->unscaledWidths);
+                            }
+                            if (nameToken == _furPropertyTokens->velocities)
+                            {
+                                if (!_params.glmComputeVelocities)
+                                {
+                                    return false;
+                                }
+                                RETURN_TRUE_WITH_OPTIONAL_VALUE(furTemplateData->defaultVelocities);
                             }
                         }
                     }
@@ -2984,6 +3002,14 @@ namespace glm
                             {
                                 *value = VtValue(furMapData->templateData->uvs);
                             }
+                            else if (nameToken == _furPropertyTokens->velocities)
+                            {
+                                if (!_params.glmComputeVelocities)
+                                {
+                                    return false;
+                                }
+                                *value = VtValue(furMapData->templateData->defaultVelocities);
+                            }
                             else
                             {
                                 *value = propInfo->defaultValue;
@@ -3853,7 +3879,7 @@ namespace glm
                             }
 
                             if (_params.glmComputeVelocities
-                                && !_ComputeVelocities(entityData, frame, lodLevel, meshData, meshKey))
+                                && !_ComputeMeshVelocities(entityData, frame, lodLevel, meshData, meshKey))
                             {
                                 meshData->velocities = meshData->templateData->defaultVelocities;
                             }
@@ -3932,7 +3958,7 @@ namespace glm
                             }
 
                             if (_params.glmComputeVelocities
-                                && !_ComputeVelocities(entityData, frame, lodLevel, meshData, meshKey))
+                                && !_ComputeMeshVelocities(entityData, frame, lodLevel, meshData, meshKey))
                             {
                                 meshData->velocities = meshData->templateData->defaultVelocities;
                             }
@@ -4016,6 +4042,14 @@ namespace glm
                                 }
                             }
 
+                            // velocities
+
+                            if (_params.glmComputeVelocities
+                                && !_ComputeFurVelocities(entityData, frame, lodLevel, furData, assetIndex))
+                            {
+                                furData->velocities = furData->templateData->defaultVelocities;
+                            }
+
                             // scale widths
 
                             size_t nwidth = furTemplateData->unscaledWidths.size();
@@ -4040,29 +4074,11 @@ namespace glm
         }
 
         //-----------------------------------------------------------------------------
-        bool GolaemUSD_DataImpl::_ComputeVelocities(
+        bool GolaemUSD_DataImpl::_ComputeMeshVelocities(
             EntityData::SP entityData, double frame, size_t lodLevel,
             SkinMeshData::SP meshData, const std::pair<int, int>& meshKey) const
         {
-            if (frame < _startFrame + 1)
-            {
-                return false;
-            }
-            SkinMeshEntityFrameData::SP prevFrameData =
-                entityData->findFrameData<SkinMeshEntityFrameData>(frame - 1.0);
-            if (!prevFrameData)
-            {
-                return false;
-            }
-            if (prevFrameData->geometryFileIdx != lodLevel)
-            {
-                return false;
-            }
-            if (prevFrameData->meshLodData.size() <= lodLevel)
-            {
-                return false;
-            }
-            SkinMeshLodData::SP meshLodData = prevFrameData->meshLodData[lodLevel];
+            SkinMeshLodData::SP meshLodData = _GetMeshLodDataAtFrame(entityData, frame, lodLevel);
             if (!meshLodData)
             {
                 return false;
@@ -4086,6 +4102,62 @@ namespace glm
             }
 
             return true;
+        }
+
+        //-----------------------------------------------------------------------------
+        bool GolaemUSD_DataImpl::_ComputeFurVelocities(
+            EntityData::SP entityData, double frame, size_t lodLevel,
+            FurData::SP furData, int furAssetIndex) const
+        {
+            SkinMeshLodData::SP meshLodData = _GetMeshLodDataAtFrame(entityData, frame, lodLevel);
+            if (!meshLodData)
+            {
+                return false;
+            }
+            auto furDataIt = meshLodData->furData.find(furAssetIndex);
+            if (furDataIt == meshLodData->furData.end() || !furDataIt->second)
+            {
+                return false;
+            }
+            FurData::SP prevFurData = furDataIt->second;
+
+            const VtVec3fArray& prevPoints = prevFurData->points;
+            size_t vertexCount = prevPoints.size();
+            furData->velocities.resize(vertexCount);
+
+            for (size_t iVertex = 0; iVertex < vertexCount; ++iVertex)
+            {
+                const GfVec3f& currPoint = furData->points[iVertex];
+                const GfVec3f& prevPoint = prevPoints[iVertex];
+                furData->velocities[iVertex] = (currPoint - prevPoint) * _fps;
+            }
+
+            return true;
+        }
+
+        //-----------------------------------------------------------------------------
+        GolaemUSD_DataImpl::SkinMeshLodData::SP GolaemUSD_DataImpl::_GetMeshLodDataAtFrame(
+            EntityData::SP entityData, double frame, size_t lodLevel) const
+        {
+            if (frame < _startFrame + 1)
+            {
+                return nullptr;
+            }
+            SkinMeshEntityFrameData::SP prevFrameData =
+                entityData->findFrameData<SkinMeshEntityFrameData>(frame - 1.0);
+            if (!prevFrameData)
+            {
+                return nullptr;
+            }
+            if (prevFrameData->geometryFileIdx != lodLevel)
+            {
+                return nullptr;
+            }
+            if (prevFrameData->meshLodData.size() <= lodLevel)
+            {
+                return nullptr;
+            }
+            return prevFrameData->meshLodData[lodLevel];
         }
 
         //-----------------------------------------------------------------------------
@@ -4554,6 +4626,10 @@ namespace glm
                 // create vertex counts, widths, UVs and default points
 
                 furTemplateData->defaultPoints.assign(vertexCount, GfVec3f(0));
+                if (_params.glmComputeVelocities)
+                {
+                    furTemplateData->defaultVelocities.assign(vertexCount, GfVec3f(0));
+                }
                 furTemplateData->vertexCounts.reserve(curveCount);
                 if (hasWidths)
                 {
