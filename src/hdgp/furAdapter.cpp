@@ -11,6 +11,7 @@
 #include <pxr/imaging/hd/xformSchema.h>
 #include <pxr/usd/usdGeom/tokens.h>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -45,7 +46,7 @@ FurAdapter::FurAdapter(
     float renderPercent, int refineLevel)
     : _furCachePtr(furCachePtr),
       _meshInFurIndex(meshInFurIndex),
-      _curveIncr(std::lround(100.0f / renderPercent)),
+      _curveIncr(std::max(1l, std::lround(100.0f / renderPercent))),
       _material(material),
       _customPrimvars(customPrimvars),
       _refineLevel(refineLevel),
@@ -119,8 +120,14 @@ FurAdapter::FurAdapter(
         size_t inputIndex = 0;
         size_t ncurve = group._numVertices.size();
 
-        for (size_t icurve = 0; icurve < ncurve; icurve += _curveIncr) {
+        for (size_t icurve = 0; icurve < ncurve; ++icurve) {
             size_t nvert = group._numVertices[icurve];
+
+            if (icurve % _curveIncr != 0) {
+                inputIndex += nvert;
+                continue;
+            }
+
             _vertexCounts.push_back(static_cast<int>(nvert));
 
             for (size_t ivert = 0; ivert < nvert; ++ivert) {
@@ -197,9 +204,10 @@ void FurAdapter::CopyVertices(
 
     for (const FurCurveGroup& group: furCache._curveGroups) {
         size_t ncurve = group._numVertices.size();
-        for (size_t icurve = 0; icurve < ncurve; icurve += _curveIncr) {
+        for (size_t icurve = 0; icurve < ncurve; ++icurve) {
             size_t nvert = group._numVertices[icurve];
-            if (group._supportMeshId == _meshInFurIndex) {
+            if (icurve % _curveIncr == 0
+                && group._supportMeshId == _meshInFurIndex) {
                 for (size_t ivert = 0; ivert < nvert; ++ivert) {
                     if (inputIndex + ivert >= src.size()) {
                         break;
