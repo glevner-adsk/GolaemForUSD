@@ -304,6 +304,8 @@ HdContainerDataSourceHandle FurAdapter::GetPrimvarsDataSource() const
         .SetPrimvarValue(
             HdRetainedTypedMultisampledDataSource<VtVec3fArray>::New(
                 _shutterOffsets.size(),
+                // HdRetainedTypedMultisampledDataSource does not modify the
+                // data, so this is safe
                 const_cast<Time*>(_shutterOffsets.data()),
                 const_cast<VtVec3fArray*>(_vertices.data())))
         .SetInterpolation(GetVertexInterpDataSource())
