@@ -175,7 +175,7 @@ if(GOLAEMUSD_STANDALONE_BUILD)
     list_files( "src/procedural" "h;cpp;json" )
     list_files( "src/utils" "h;cpp" )
     list_files( "src/version" "h;cpp;rc")
-    list_files( "src/hdgp" "cpp" )
+    list_files( "src/hdgp" "h;cpp" )
 
     # Include and Link Dependencies
     add_library( ${PROJECT_NAME} SHARED ${LIST_FILES} )
@@ -288,7 +288,7 @@ else()
     list_files( "src/procedural" "h;cpp;json" )
     list_files( "src/utils" "h;cpp" )
     list_files( "src/version" "h;cpp;rc")
-    list_files( "src/hdgp" "cpp" )
+    list_files( "src/hdgp" "h;cpp" )
 
     # Create a library
     add_library( ${PROJECT_NAME} SHARED ${LIST_FILES} )
