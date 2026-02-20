@@ -4648,8 +4648,6 @@ namespace glm
                         continue;
                     }
 
-                    // vertex counts, widths, UVs for each curve
-
                     size_t inputIndex = 0;
                     size_t ncurve = group._numVertices.size();
                     for (size_t icurve = 0; icurve < ncurve; ++icurve)
@@ -4660,6 +4658,9 @@ namespace glm
                             inputIndex += nvert;
                             continue;
                         }
+
+                        // vertex counts, widths and UVs
+
                         furTemplateData->vertexCounts.push_back(static_cast<int>(nvert));
                         for (size_t ivert = 0; ivert < nvert; ++ivert)
                         {
@@ -4689,30 +4690,22 @@ namespace glm
                             }
                             ++inputIndex;
                         }
-                    }
 
-                    // property values for this group of curves
+                        // property values
 
-                    if (group._floatProperties.size() == floatPropCount)
-                    {
-                        for (size_t i = 0; i < floatPropCount; ++i)
+                        if (group._floatProperties.size() == floatPropCount)
                         {
-                            VtFloatArray& dst = floatProps[i];
-                            for (float value: group._floatProperties[i])
+                            for (size_t iprop = 0; iprop < floatPropCount; ++iprop)
                             {
-                                dst.push_back(value);
+                                floatProps[iprop].push_back(group._floatProperties[iprop][icurve]);
                             }
                         }
-                    }
 
-                    if (group._vector3Properties.size() == vector3PropCount)
-                    {
-                        for (size_t i = 0; i < vector3PropCount; ++i)
+                        if (group._vector3Properties.size() == vector3PropCount)
                         {
-                            VtVec3fArray& dst = vector3Props[i];
-                            for (const glm::Vector3& src: group._vector3Properties[i])
+                            for (size_t iprop = 0; iprop < vector3PropCount; ++iprop)
                             {
-                                dst.emplace_back(src.getFloatValues());
+                                vector3Props[iprop].emplace_back(group._vector3Properties[iprop][icurve].getFloatValues());
                             }
                         }
                     }
