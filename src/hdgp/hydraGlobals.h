@@ -16,7 +16,7 @@ namespace glmhydra {
 /*
  * If true, rigid mesh entities are treated differently: a single instance of
  * FileMeshAdapter is created for a given rigid mesh, and FileMeshInstance is
- * used to add different materials, transforation matrices and custom primvars
+ * used to add different materials, transformation matrices and custom primvars
  * for each instance.
  *
  * For now, though, this is disabled, because I don't know how to calculate the
