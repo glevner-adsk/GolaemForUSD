@@ -13,8 +13,8 @@ namespace glmhydra {
 class MeshDataSourceBase
 {
 public:
-    MeshDataSourceBase() {}
-    virtual ~MeshDataSourceBase() {}
+    MeshDataSourceBase() = default;
+    virtual ~MeshDataSourceBase() = default;
 
     virtual PXR_NS::HdContainerDataSourceHandle GetDataSource() const = 0;
     virtual PXR_NS::HdDataSourceLocatorSet GetVariableDataSources() const = 0;
