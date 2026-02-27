@@ -3281,6 +3281,13 @@ namespace glm
             {
                 return;
             }
+
+            // In dynamic LOD mode, only compute velocities when the same geometry/LOD
+            // index is used in both the previous and current frames.
+            if (_params.glmLodMode != 0 && currentFrameData->geometryFileIdx != prevFrameData->geometryFileIdx)
+            {
+                return;
+            }
             size_t lodLevel = _params.glmLodMode == 0 ? 0 : currentFrameData->geometryFileIdx;
             if (lodLevel >= currentFrameData->meshLodData.size() || lodLevel >= prevFrameData->meshLodData.size())
             {
