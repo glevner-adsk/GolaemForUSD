@@ -145,6 +145,7 @@ namespace glm
                 typedef SmartPointer<SkinMeshEntityFrameData> SP;
 
                 glm::Array<SkinMeshLodData::SP> meshLodData;
+                bool velocitiesComputed = false;
             };
 
             struct SkinMeshEntityData : public EntityData
@@ -329,9 +330,7 @@ namespace glm
             SdfPath _CreateHierarchyFor(const glm::GlmString& hierarchy, const SdfPath& parentPath, GlmMap<GlmString, SdfPath>& existingPaths);
             SkelEntityFrameData::SP _ComputeSkelEntity(EntityData::SP entityData, double frame);
             SkinMeshEntityFrameData::SP _ComputeSkinMeshEntity(EntityData::SP entityData, double frame);
-            bool _ComputeVelocities(
-                SkinMeshEntityFrameData::SP currentFrameData, double frame, size_t lodLevel,
-                SkinMeshData::SP meshData, const std::pair<int, int>& meshKey) const;
+            void _ComputeEntityVelocities(SkinMeshEntityFrameData::SP currentFrameData, SkinMeshEntityFrameData::SP prevFrameData);
             void _ComputeEntity(EntityFrameData::SP entityFrameData, double frame);
             void _InvalidateEntity(EntityFrameData::SP entityFrameData);
             void _getCharacterExtent(EntityData::SP entityData, GfVec3f& extent) const;

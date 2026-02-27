@@ -1494,12 +1494,10 @@ namespace glm
 
                 if (skinMeshEntityData->computeVelocities && frame >= _startFrame + 1)
                 {
-                    // we don't actually use prevFrameData, but the smart pointer
-                    // ensures it is not deleted before _ComputeSkinMeshEntity()
-                    // gets a chance to use it
                     prevFrameData = _ComputeSkinMeshEntity(entityData, frame - 1.0);
                 }
                 SkinMeshEntityFrameData::SP entityFrameData = _ComputeSkinMeshEntity(entityData, frame);
+                _ComputeEntityVelocities(entityFrameData, prevFrameData);
 
                 if (isEntityPath)
                 {
@@ -1793,7 +1791,7 @@ namespace glm
 
                 glm::crowdio::CachedSimulation& cachedSimulation = _factory->getCachedSimulation(cacheDir.c_str(), cacheName.c_str(), glmCfName.c_str());
                 const glm::crowdio::GlmSimulationData* simuData = cachedSimulation.getFinalSimulationData();
-                if (simuData == NULL)
+                if (simuData == nullptr)
                 {
                     GLM_CROWD_TRACE_ERROR("Could not read simulation data for cache '" << cacheName << "' and Crowd Field '" << glmCfName << "' in cache directory '" << cacheDir << "': " << glm::crowdio::glmConvertSimulationCacheStatus(cachedSimulation.getFinalSimulationStatus()));
                 }
@@ -1803,7 +1801,7 @@ namespace glm
                 frameRangesPerCrowdField.push_back({firstFrameInCache, lastFrameInCache});
 
                 // Initialize the global-to-specific shader attribute indices once, from the first valid crowd field.
-                if (iCf == 0)
+                if (simuData != nullptr && _globalToSpecificShaderAttrIdxPerChar.empty())
                 {
                     const glm::ShaderAssetDataContainer* shaderDataContainer = cachedSimulation.getFinalShaderData(firstFrameInCache, UINT32_MAX, true);
                     if (shaderDataContainer != nullptr)
@@ -3272,6 +3270,73 @@ namespace glm
         }
 
         //-----------------------------------------------------------------------------
+        void GolaemUSD_DataImpl::_ComputeEntityVelocities(SkinMeshEntityFrameData::SP currentFrameData, SkinMeshEntityFrameData::SP prevFrameData)
+        {
+            SkinMeshEntityData::SP skinMeshEntityData = glm::staticCast<SkinMeshEntityData>(currentFrameData->entityData);
+            if (!skinMeshEntityData->computeVelocities || currentFrameData->velocitiesComputed)
+            {
+                return;
+            }
+            if (!prevFrameData)
+            {
+                return;
+            }
+            size_t lodLevel = _params.glmLodMode == 0 ? 0 : currentFrameData->geometryFileIdx;
+            if (lodLevel >= currentFrameData->meshLodData.size() || lodLevel >= prevFrameData->meshLodData.size())
+            {
+                return;
+            }
+            SkinMeshLodData::SP prevMeshLodData = prevFrameData->meshLodData[lodLevel];
+            if (prevMeshLodData == nullptr)
+            {
+                return;
+            }
+
+            for (const auto& meshDataIt : prevMeshLodData->meshData)
+            {
+                const SkinMeshData::SP& prevMeshData = meshDataIt.second;
+                if (prevMeshData == nullptr)
+                {
+                    continue;
+                }
+                const VtArray<GfVec3f>& prevPoints = prevMeshData->points;
+                if (prevPoints.empty())
+                {
+                    continue;
+                }
+
+                const auto& currentMeshDataIt = currentFrameData->meshLodData[lodLevel]->meshData.find(meshDataIt.first);
+                if (currentMeshDataIt == currentFrameData->meshLodData[lodLevel]->meshData.end())
+                {
+                    continue;
+                }
+                const SkinMeshData::SP& currentMeshData = currentMeshDataIt->second;
+                if (currentMeshData == nullptr)
+                {
+                    continue;
+                }
+                const VtArray<GfVec3f>& currentPoints = currentMeshData->points;
+                if (currentPoints.empty() || currentPoints.size() != prevPoints.size())
+                {
+                    continue;
+                }
+
+                bool velocitiesEnabled = currentMeshData->templateData->velocitiesIntShaderAttributeIndex >= 0 &&
+                                         static_cast<size_t>(currentMeshData->templateData->velocitiesIntShaderAttributeIndex) < currentFrameData->intShaderAttrValues.size() &&
+                                         currentFrameData->intShaderAttrValues[currentMeshData->templateData->velocitiesIntShaderAttributeIndex] == 1;
+                if (velocitiesEnabled)
+                {
+                    currentMeshData->velocities.resize(currentPoints.size());
+                    for (size_t iPoint = 0; iPoint < currentPoints.size(); ++iPoint)
+                    {
+                        currentMeshData->velocities[iPoint] = (currentPoints[iPoint] - prevPoints[iPoint]) * _fps;
+                    }
+                    currentFrameData->velocitiesComputed = true;
+                }
+            }
+        }
+
+        //-----------------------------------------------------------------------------
         GolaemUSD_DataImpl::SkinMeshEntityFrameData::SP GolaemUSD_DataImpl::_ComputeSkinMeshEntity(EntityData::SP entityData, double frame)
         {
             SkinMeshEntityFrameData::SP skinMeshEntityFrameData = entityData->getFrameData<SkinMeshEntityFrameData>(frame, static_cast<size_t>(_params.glmCachedFramesCount));
@@ -3531,11 +3596,6 @@ namespace glm
                                 }
                             }
 
-                            if (skinMeshEntityData->computeVelocities && !_ComputeVelocities(skinMeshEntityFrameData, frame, lodLevel, meshData, meshKey))
-                            {
-                                meshData->velocities = meshData->templateData->defaultVelocities;
-                            }
-
                             if (hasNormals)
                             {
                                 FbxAMatrix globalRotate(identityMatrix);
@@ -3609,11 +3669,6 @@ namespace glm
                                 point -= skinMeshEntityFrameData->pos;
                             }
 
-                            if (skinMeshEntityData->computeVelocities && !_ComputeVelocities(skinMeshEntityFrameData, frame, lodLevel, meshData, meshKey))
-                            {
-                                meshData->velocities = meshData->templateData->defaultVelocities;
-                            }
-
                             const glm::Array<glm::Vector3>& meshDeformedNormals = frameDeformedNormals[iRenderMesh];
 
                             glm::crowdio::GlmFileMeshTransform& assetFileMeshTransform = gcgCharacter->getGeometry()._transforms[outputData._transformIndicesInGcgFile[iRenderMesh]];
@@ -3653,62 +3708,6 @@ namespace glm
                 }
             }
             return skinMeshEntityFrameData;
-        }
-
-        //-----------------------------------------------------------------------------
-        bool GolaemUSD_DataImpl::_ComputeVelocities(
-            SkinMeshEntityFrameData::SP currentFrameData, double frame, size_t lodLevel,
-            SkinMeshData::SP meshData, const std::pair<int, int>& meshKey) const
-        {
-            if (frame < _startFrame + 1)
-            {
-                return false;
-            }
-            bool velocitiesEnabled = meshData->templateData->velocitiesIntShaderAttributeIndex >= 0 &&
-                                     static_cast<size_t>(meshData->templateData->velocitiesIntShaderAttributeIndex) < currentFrameData->intShaderAttrValues.size() &&
-                                     currentFrameData->intShaderAttrValues[meshData->templateData->velocitiesIntShaderAttributeIndex] == 1;
-            if (!velocitiesEnabled)
-            {
-                return false;
-            }
-            SkinMeshEntityFrameData::SP prevFrameData =
-                currentFrameData->entityData->findFrameData<SkinMeshEntityFrameData>(frame - 1.0);
-            if (!prevFrameData)
-            {
-                return false;
-            }
-            if (prevFrameData->geometryFileIdx != lodLevel)
-            {
-                return false;
-            }
-            if (prevFrameData->meshLodData.size() <= lodLevel)
-            {
-                return false;
-            }
-            SkinMeshLodData::SP meshLodData = prevFrameData->meshLodData[lodLevel];
-            if (!meshLodData)
-            {
-                return false;
-            }
-            auto meshDataIt = meshLodData->meshData.find(meshKey);
-            if (meshDataIt == meshLodData->meshData.end() || !meshDataIt->second)
-            {
-                return false;
-            }
-            SkinMeshData::SP prevMeshData = meshDataIt->second;
-
-            const VtVec3fArray& prevPoints = prevMeshData->points;
-            size_t vertexCount = prevPoints.size();
-            meshData->velocities.resize(vertexCount);
-
-            for (size_t iVertex = 0; iVertex < vertexCount; ++iVertex)
-            {
-                const GfVec3f& currPoint = meshData->points[iVertex];
-                const GfVec3f& prevPoint = prevPoints[iVertex];
-                meshData->velocities[iVertex] = (currPoint - prevPoint) * _fps;
-            }
-
-            return true;
         }
 
         //-----------------------------------------------------------------------------
