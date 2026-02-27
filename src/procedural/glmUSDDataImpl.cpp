@@ -3653,7 +3653,9 @@ namespace glm
             {
                 return false;
             }
-            bool velocitiesEnabled = meshData->templateData->velocitiesIntShaderAttributeIndex >= 0 && currentFrameData->intShaderAttrValues[meshData->templateData->velocitiesIntShaderAttributeIndex] == 1;
+            bool velocitiesEnabled = meshData->templateData->velocitiesIntShaderAttributeIndex >= 0 &&
+                                     static_cast<size_t>(meshData->templateData->velocitiesIntShaderAttributeIndex) < currentFrameData->intShaderAttrValues.size() &&
+                                     currentFrameData->intShaderAttrValues[meshData->templateData->velocitiesIntShaderAttributeIndex] == 1;
             if (!velocitiesEnabled)
             {
                 return false;
