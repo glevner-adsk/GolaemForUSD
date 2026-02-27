@@ -116,7 +116,7 @@ namespace glm
                 VtVec3fArray defaultVelocities;
                 // int normalsCount; // not needed, = faceVertexIndices.size();
                 SdfPathListOp materialPath;
-                int velocitiesIntShaderAttributeIndex = -1; // index of the enableUsdVelocities int attrubute if found, -1 otherwise
+                int velocitiesIntShaderAttributeIndex = -1; // index of the enableUsdVelocities int attribute if found, -1 otherwise
             };
 
             struct SkinMeshData : public glm::ReferenceCounter
