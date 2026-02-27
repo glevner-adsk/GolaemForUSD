@@ -1796,7 +1796,7 @@ namespace glm
                     GLM_CROWD_TRACE_ERROR("Could not read simulation data for cache '" << cacheName << "' and Crowd Field '" << glmCfName << "' in cache directory '" << cacheDir << "': " << glm::crowdio::glmConvertSimulationCacheStatus(cachedSimulation.getFinalSimulationStatus()));
                 }
 
-                int firstFrameInCache, lastFrameInCache = 0;
+                int firstFrameInCache = 0, lastFrameInCache = 0;
                 cachedSimulation.getSrcFrameRangeAvailableOnDisk(firstFrameInCache, lastFrameInCache);
                 frameRangesPerCrowdField.push_back({firstFrameInCache, lastFrameInCache});
 
