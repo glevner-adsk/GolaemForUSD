@@ -1339,7 +1339,7 @@ namespace glm
                     if (value)
                     {
                         const glm::ShaderAttribute& shaderAttr = entityFrameData->entityData->inputGeoData._character->_shaderAttributes[*shaderAttrIdx];
-                        size_t specificAttrIdx = _globalToSpecificShaderAttrIdxPerChar[entityFrameData->entityData->inputGeoData._characterIdx][*shaderAttrIdx];
+                        size_t specificAttrIdx = _globalToSpecificShaderAttrIdxPerChar[entityFrameData->entityData->inputGeoData._characterIdx][*shaderAttrIdx]; // no bounds check needed, characters are consistent across crowd fields
                         switch (shaderAttr._type)
                         {
                         case glm::ShaderAttributeType::INT:
@@ -1562,7 +1562,7 @@ namespace glm
                                 }
                                 if (nameToken == _skinMeshPropertyTokens->velocities)
                                 {
-                                    if (!skinMeshEntityData->computeVelocities || meshData->templateData->velocitiesIntShaderAttributeIndex < 0)
+                                    if (!skinMeshEntityData->computeVelocities || meshData->velocities.empty())
                                     {
                                         return false;
                                     }
@@ -1587,7 +1587,7 @@ namespace glm
                         }
                         if (nameToken == _skinMeshPropertyTokens->velocities)
                         {
-                            if (!skinMeshEntityData->computeVelocities || meshTemplateData->velocitiesIntShaderAttributeIndex < 0)
+                            if (!skinMeshEntityData->computeVelocities || meshTemplateData->defaultVelocities.empty())
                             {
                                 return false;
                             }
@@ -2709,7 +2709,7 @@ namespace glm
                             }
                             else if (nameToken == _skinMeshPropertyTokens->velocities)
                             {
-                                if (!meshMapData->entityData->computeVelocities || meshMapData->templateData->velocitiesIntShaderAttributeIndex < 0)
+                                if (!meshMapData->entityData->computeVelocities || meshMapData->templateData->defaultVelocities.empty())
                                 {
                                     return false;
                                 }
@@ -3204,7 +3204,7 @@ namespace glm
             const glm::Array<glm::Vector3>& entityVectorShaderData = shaderDataContainer->vectorData[entityData->inputGeoData._entityIndex];
             const glm::Array<glm::GlmString>& entityStringShaderData = shaderDataContainer->stringData[entityData->inputGeoData._entityIndex];
 
-            const PODArray<size_t>& globalToSpecificShaderAttrIdx = _globalToSpecificShaderAttrIdxPerChar[entityData->inputGeoData._characterIdx];
+            const PODArray<size_t>& globalToSpecificShaderAttrIdx = _globalToSpecificShaderAttrIdxPerChar[entityData->inputGeoData._characterIdx]; // no bounds check needed, characters are consistent across crowd fields
 
             const PODArray<size_t>& characterSpecificShaderAttrCounters = shaderDataContainer->specificShaderAttrCountersPerChar[entityData->inputGeoData._characterIdx];
 
@@ -3863,7 +3863,7 @@ namespace glm
                 const glm::ShaderAttribute& shaderAttribute = inputGeoData._character->_shaderAttributes[velocitiesShaderAttributeIndex];
                 if (shaderAttribute._type == ShaderAttributeType::INT)
                 {
-                    const PODArray<size_t>& globalToSpecificShaderAttrIdx = _globalToSpecificShaderAttrIdxPerChar[inputGeoData._characterIdx];
+                    const PODArray<size_t>& globalToSpecificShaderAttrIdx = _globalToSpecificShaderAttrIdxPerChar[inputGeoData._characterIdx]; // no bounds check needed, characters are consistent across crowd fields
                     if (static_cast<size_t>(velocitiesShaderAttributeIndex) < globalToSpecificShaderAttrIdx.size())
                     {
                         velocitiesIntShaderAttributeIndex = static_cast<int>(globalToSpecificShaderAttrIdx[velocitiesShaderAttributeIndex]);
@@ -3990,8 +3990,6 @@ namespace glm
 
                     meshTemplateData->defaultNormals.assign(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
 
-                    meshTemplateData->defaultVelocities.assign(iActualVertex, GfVec3f(0.0f, 0.0f, 0.0f));
-
                     // find how many uv layers are available
                     int uvSetCount = fbxMesh->GetLayerCount(FbxLayerElement::eUV);
                     meshTemplateData->uvSets.resize(uvSetCount);
@@ -4079,8 +4077,6 @@ namespace glm
 
                     meshTemplateData->defaultNormals.assign(meshTemplateData->faceVertexIndices.size(), GfVec3f(0.0f, 0.0f, 0.0f));
 
-                    meshTemplateData->defaultVelocities.assign(assetFileMesh._vertexCount, GfVec3f(0.0f, 0.0f, 0.0f));
-
                     meshTemplateData->uvSets.resize(assetFileMesh._uvSetCount);
                     for (size_t iUVSet = 0; iUVSet < assetFileMesh._uvSetCount; ++iUVSet)
                     {
@@ -4154,6 +4150,10 @@ namespace glm
                     {
                         // if the shader attribute to enable velocities is present on the shading group, set it on the template data so it can be used later when creating the mesh data
                         meshTemplateData->velocitiesIntShaderAttributeIndex = velocitiesIntShaderAttributeIndex;
+                        if (meshTemplateData->velocitiesIntShaderAttributeIndex >= 0)
+                        {
+                            meshTemplateData->defaultVelocities.assign(meshTemplateData->defaultPoints.size(), GfVec3f(0.0f, 0.0f, 0.0f));
+                        }
                     }
                 }
 
