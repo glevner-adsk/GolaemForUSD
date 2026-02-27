@@ -3841,13 +3841,20 @@ namespace glm
 
             int velocitiesShaderAttributeIndex = inputGeoData._character->findShaderAttributeIdx("glmEnableUsdVelocities");
             int velocitiesIntShaderAttributeIndex = -1;
-            if (velocitiesShaderAttributeIndex != -1)
+            if (velocitiesShaderAttributeIndex >= 0)
             {
                 const glm::ShaderAttribute& shaderAttribute = inputGeoData._character->_shaderAttributes[velocitiesShaderAttributeIndex];
                 if (shaderAttribute._type == ShaderAttributeType::INT)
                 {
                     const PODArray<size_t>& globalToSpecificShaderAttrIdx = _globalToSpecificShaderAttrIdxPerChar[inputGeoData._characterIdx];
-                    velocitiesIntShaderAttributeIndex = static_cast<int>(globalToSpecificShaderAttrIdx[velocitiesShaderAttributeIndex]);
+                    if (static_cast<size_t>(velocitiesShaderAttributeIndex) < globalToSpecificShaderAttrIdx.size())
+                    {
+                        velocitiesIntShaderAttributeIndex = static_cast<int>(globalToSpecificShaderAttrIdx[velocitiesShaderAttributeIndex]);
+                    }
+                    else
+                    {
+                        GLM_CROWD_TRACE_WARNING("Shader attribute " << shaderAttribute._name << " index is out of bounds in globalToSpecificShaderAttrIdx, cannot be used to enable USD velocities.");
+                    }
                 }
                 else
                 {
