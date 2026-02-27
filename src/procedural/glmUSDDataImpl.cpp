@@ -1799,7 +1799,11 @@ namespace glm
                 frameRangesPerCrowdField.push_back({firstFrameInCache, lastFrameInCache});
 
                 const glm::ShaderAssetDataContainer* shaderDataContainer = cachedSimulation.getFinalShaderData(firstFrameInCache, UINT32_MAX, true);
-                _globalToSpecificShaderAttrIdxPerChar = shaderDataContainer->globalToSpecificShaderAttrIdxPerChar;
+                // Initialize the global-to-specific shader attribute indices once, from the first valid crowd field.
+                if (iCf == 0)
+                {
+                    _globalToSpecificShaderAttrIdxPerChar = shaderDataContainer->globalToSpecificShaderAttrIdxPerChar;
+                }
             }
 
             // Layer always has a root spec that is the default prim of the layer.
