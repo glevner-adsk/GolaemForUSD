@@ -116,6 +116,7 @@ namespace glm
                 VtVec3fArray defaultVelocities;
                 // int normalsCount; // not needed, = faceVertexIndices.size();
                 SdfPathListOp materialPath;
+                int velocitiesIntShaderAttributeIndex = -1; // index of the enableUsdVelocities int attrubute if found, -1 otherwise
             };
 
             struct SkinMeshData : public glm::ReferenceCounter
@@ -151,6 +152,7 @@ namespace glm
                 typedef SmartPointer<SkinMeshEntityData> SP;
 
                 glm::PODArray<int> lodEnabled; // useful when using static lod
+                bool computeVelocities = false;
             };
 
             struct SkelEntityData : public EntityData
@@ -249,7 +251,7 @@ namespace glm
 
             glm::PODArray<glm::Mutex*> _cachedSimulationLocks;
 
-            glm::Array<glm::Array<PODArray<size_t>>> _globalToSpecificShaderAttrIdxPerCharPerCrowdField;
+            glm::Array<PODArray<size_t>> _globalToSpecificShaderAttrIdxPerChar;
 
             UsdWrapper _usdWrapper;
 
@@ -328,7 +330,7 @@ namespace glm
             SkelEntityFrameData::SP _ComputeSkelEntity(EntityData::SP entityData, double frame);
             SkinMeshEntityFrameData::SP _ComputeSkinMeshEntity(EntityData::SP entityData, double frame);
             bool _ComputeVelocities(
-                EntityData::SP entityData, double frame, size_t lodLevel,
+                SkinMeshEntityFrameData::SP currentFrameData, double frame, size_t lodLevel,
                 SkinMeshData::SP meshData, const std::pair<int, int>& meshKey) const;
             void _ComputeEntity(EntityFrameData::SP entityFrameData, double frame);
             void _InvalidateEntity(EntityFrameData::SP entityFrameData);
@@ -377,10 +379,18 @@ namespace glm
             {
                 frameData = new FrameDataType();
 
-                // remove the oldest frame data if we exceed cachedFramesCount
+                // remove the furthest frame data if we reached the maximum number of cached frames, then add the new one
                 if (frameDataMap.size() >= cachedFramesCount)
                 {
-                    frameDataMap.erase(frameDataMap.begin());
+                    auto itFurthestFrame = frameDataMap.begin();
+                    for (auto it = frameDataMap.begin(); it != frameDataMap.end(); ++it)
+                    {
+                        if (std::abs(it.getKey() - frame) > std::abs(itFurthestFrame.getKey() - frame))
+                        {
+                            itFurthestFrame = it;
+                        }
+                    }
+                    frameDataMap.erase(itFurthestFrame);
                 }
                 frameDataMap[frame] = frameData;
             }
