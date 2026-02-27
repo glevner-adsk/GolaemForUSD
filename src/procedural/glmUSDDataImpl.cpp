@@ -1792,17 +1792,24 @@ namespace glm
                 }
 
                 glm::crowdio::CachedSimulation& cachedSimulation = _factory->getCachedSimulation(cacheDir.c_str(), cacheName.c_str(), glmCfName.c_str());
-                cachedSimulation.getFinalSimulationData();
+                const glm::crowdio::GlmSimulationData* simuData = cachedSimulation.getFinalSimulationData();
+                if (simuData == NULL)
+                {
+                    GLM_CROWD_TRACE_ERROR("Could not read simulation data for cache '" << cacheName << "' and Crowd Field '" << glmCfName << "' in cache directory '" << cacheDir << "': " << glm::crowdio::glmConvertSimulationCacheStatus(cachedSimulation.getFinalSimulationStatus()));
+                }
 
-                int firstFrameInCache, lastFrameInCache;
+                int firstFrameInCache, lastFrameInCache = 0;
                 cachedSimulation.getSrcFrameRangeAvailableOnDisk(firstFrameInCache, lastFrameInCache);
                 frameRangesPerCrowdField.push_back({firstFrameInCache, lastFrameInCache});
 
-                const glm::ShaderAssetDataContainer* shaderDataContainer = cachedSimulation.getFinalShaderData(firstFrameInCache, UINT32_MAX, true);
                 // Initialize the global-to-specific shader attribute indices once, from the first valid crowd field.
                 if (iCf == 0)
                 {
-                    _globalToSpecificShaderAttrIdxPerChar = shaderDataContainer->globalToSpecificShaderAttrIdxPerChar;
+                    const glm::ShaderAssetDataContainer* shaderDataContainer = cachedSimulation.getFinalShaderData(firstFrameInCache, UINT32_MAX, true);
+                    if (shaderDataContainer != nullptr)
+                    {
+                        _globalToSpecificShaderAttrIdxPerChar = shaderDataContainer->globalToSpecificShaderAttrIdxPerChar;
+                    }
                 }
             }
 
@@ -3845,7 +3852,7 @@ namespace glm
 
             int velocitiesShaderAttributeIndex = inputGeoData._character->findShaderAttributeIdx("glmEnableUsdVelocities");
             int velocitiesIntShaderAttributeIndex = -1;
-            if (velocitiesShaderAttributeIndex >= 0)
+            if (velocitiesShaderAttributeIndex >= 0 && inputGeoData._characterIdx < _globalToSpecificShaderAttrIdxPerChar.size())
             {
                 const glm::ShaderAttribute& shaderAttribute = inputGeoData._character->_shaderAttributes[velocitiesShaderAttributeIndex];
                 if (shaderAttribute._type == ShaderAttributeType::INT)
